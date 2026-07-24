@@ -1,14 +1,12 @@
 """
-App de Notas para tablet/celular Android - hecha con Python y Kivy.
-Estilo coquette (rosa pastel) con color de fondo personalizable.
+Mi Cuaderno - app para tablet/celular Android hecha con Python y Kivy.
+Estilo coquette (rosa pastel) con 3 secciones: Notas, Tareas y Dibujo.
 
 Funciones:
-- Interfaz coquette y color de fondo a elegir
-- Fecha/hora en cada nota y contador de notas
-- Buscador de notas
-- Editar notas y ponerles color de etiqueta
-- Favoritos (suben arriba)
-- Confirmacion antes de borrar
+- NOTAS: crear, editar, buscar, favoritos, color de etiqueta, fecha/hora
+- TAREAS: lista de tareas con casilla para marcar completadas
+- DIBUJO: lienzo con colores, grosores de lapiz, borrador, limpiar y guardar
+- Color de fondo personalizable (se guarda)
 
 Este es el archivo principal que Buildozer usa para crear el .apk.
 Se llama 'main.py' obligatoriamente.
@@ -21,13 +19,12 @@ import datetime
 import json
 import os
 
-# Quita el circulo rojo del clic derecho (simulador de toque multiple de Kivy)
 from kivy.config import Config
 Config.set("input", "mouse", "mouse,disable_multitouch")
 
 from kivy.app import App
 from kivy.core.window import Window
-from kivy.graphics import Color, RoundedRectangle
+from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -37,35 +34,32 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
-# ---- Paleta coquette (rosa pastel) ----  (R, G, B, transparencia) de 0 a 1
-CABECERA    = (0.93, 0.60, 0.70, 1)      # rosa fuerte
-ACCENT      = (0.90, 0.52, 0.63, 1)      # rosa (botones)
-CARD        = (1.00, 0.97, 0.98, 1)      # tarjetas casi blancas
-CARD_BORDE  = (0.94, 0.88, 0.91, 1)      # rosa muy claro
-BORRAR      = (0.90, 0.45, 0.52, 1)      # rojo rosado
-TEXTO       = (0.38, 0.22, 0.28, 1)      # texto oscuro (ciruela)
-TEXTO_TENUE = (0.62, 0.48, 0.54, 1)      # texto secundario
-ORO         = (0.95, 0.72, 0.35, 1)      # estrella de favorito
+# ---- Paleta coquette (rosa pastel) ----
+CABECERA    = (0.93, 0.60, 0.70, 1)
+ACCENT      = (0.90, 0.52, 0.63, 1)
+CARD        = (1.00, 0.97, 0.98, 1)
+CARD_BORDE  = (0.94, 0.88, 0.91, 1)
+BORRAR      = (0.90, 0.45, 0.52, 1)
+VERDE       = (0.45, 0.78, 0.55, 1)
+TEXTO       = (0.38, 0.22, 0.28, 1)
+TEXTO_TENUE = (0.62, 0.48, 0.54, 1)
+ORO         = (0.95, 0.72, 0.35, 1)
 BLANCO      = (1, 1, 1, 1)
 
-# Colores de fondo que se pueden elegir (pasteles)
 FONDOS = [
-    (0.99, 0.94, 0.95, 1),   # 0 - rosa crema
-    (0.96, 0.93, 0.98, 1),   # 1 - lavanda
-    (0.93, 0.97, 0.95, 1),   # 2 - menta
-    (0.99, 0.97, 0.91, 1),   # 3 - vainilla
-    (0.99, 0.94, 0.91, 1),   # 4 - durazno
-    (0.92, 0.96, 0.99, 1),   # 5 - cielo
+    (0.99, 0.94, 0.95, 1), (0.96, 0.93, 0.98, 1), (0.93, 0.97, 0.95, 1),
+    (0.99, 0.97, 0.91, 1), (0.99, 0.94, 0.91, 1), (0.92, 0.96, 0.99, 1),
 ]
 
-# Colores de etiqueta que se pueden poner a una nota (el 0 = sin color)
 COLORES = [
-    None,
-    (0.95, 0.45, 0.60, 1),
-    (0.55, 0.70, 0.95, 1),
-    (0.50, 0.80, 0.60, 1),
-    (0.98, 0.80, 0.40, 1),
-    (0.98, 0.60, 0.45, 1),
+    None, (0.95, 0.45, 0.60, 1), (0.55, 0.70, 0.95, 1),
+    (0.50, 0.80, 0.60, 1), (0.98, 0.80, 0.40, 1), (0.98, 0.60, 0.45, 1),
+]
+
+# Colores para dibujar
+DIBUJO_COLORES = [
+    (0.20, 0.20, 0.25, 1), (0.90, 0.30, 0.40, 1), (0.30, 0.55, 0.95, 1),
+    (0.30, 0.75, 0.45, 1), (0.98, 0.75, 0.30, 1), (0.95, 0.50, 0.65, 1),
 ]
 
 MESES = ["ene", "feb", "mar", "abr", "may", "jun",
@@ -78,8 +72,6 @@ def fecha_ahora():
 
 
 class Tarjeta(BoxLayout):
-    """Un contenedor con fondo de color y esquinas redondeadas."""
-
     def __init__(self, color=CARD, radio=18, **kwargs):
         super().__init__(**kwargs)
         with self.canvas.before:
@@ -93,8 +85,6 @@ class Tarjeta(BoxLayout):
 
 
 class BarraColor(Widget):
-    """Una barrita de color a la izquierda de la nota (la etiqueta)."""
-
     def __init__(self, color, **kwargs):
         super().__init__(**kwargs)
         with self.canvas:
@@ -108,19 +98,23 @@ class BarraColor(Widget):
 
 
 class BotonRedondo(Button):
-    """Boton con color de fondo, esquinas redondeadas y color de texto propio."""
-
     def __init__(self, color=ACCENT, radio=16, texto_color=BLANCO, **kwargs):
         super().__init__(**kwargs)
         self.background_normal = ""
         self.background_down = ""
         self.background_color = (0, 0, 0, 0)
-        self.color = texto_color        # color del texto
+        self.color = texto_color
         self._base = color
         with self.canvas.before:
             self._color = Color(*color)
             self._rect = RoundedRectangle(radius=[radio])
         self.bind(pos=self._actualizar, size=self._actualizar, state=self._al_pulsar)
+
+    def poner_color(self, color, texto_color=None):
+        self._base = color
+        self._color.rgba = color
+        if texto_color is not None:
+            self.color = texto_color
 
     def _actualizar(self, *args):
         self._rect.pos = self.pos
@@ -132,83 +126,105 @@ class BotonRedondo(Button):
                             self._base[2] * factor, 1)
 
 
+class Lienzo(Widget):
+    """Area blanca para dibujar con el dedo o el raton."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.color_lapiz = (0.20, 0.20, 0.25, 1)
+        self.grosor = 3
+        with self.canvas.before:
+            Color(1, 1, 1, 1)
+            self._fondo = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._actualizar, size=self._actualizar)
+
+    def _actualizar(self, *args):
+        self._fondo.pos = self.pos
+        self._fondo.size = self.size
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            with self.canvas:
+                Color(*self.color_lapiz)
+                touch.ud["linea"] = Line(points=[touch.x, touch.y],
+                                         width=self.grosor, cap="round", joint="round")
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if "linea" in touch.ud and self.collide_point(*touch.pos):
+            touch.ud["linea"].points += [touch.x, touch.y]
+            return True
+        return super().on_touch_move(touch)
+
+    def limpiar(self):
+        self.canvas.clear()
+
+
 class AppNotas(App):
     def build(self):
-        self.title = "Mis Notas"
+        self.title = "Mi Cuaderno"
         self.archivo = os.path.join(self.user_data_dir, "notas.json")
+        self.archivo_tareas = os.path.join(self.user_data_dir, "tareas.json")
         self.archivo_config = os.path.join(self.user_data_dir, "config.json")
-        self.notas = self.cargar_notas()
+        self.notas = self.cargar_json(self.archivo, self.normalizar_nota)
+        self.tareas = self.cargar_json(self.archivo_tareas, self.normalizar_tarea)
         self.config_app = self.cargar_config()
         self.filtro = ""
+        self.lienzo = None
+        self.seccion = "notas"
 
         self.aplicar_fondo()
 
-        raiz = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
+        raiz = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(10))
 
-        # ---- Cabecera: titulo + boton de fondo ----
-        cabecera = Tarjeta(color=CABECERA, radio=22, size_hint_y=None, height=dp(64),
+        # ---- Cabecera ----
+        cabecera = Tarjeta(color=CABECERA, radio=22, size_hint_y=None, height=dp(60),
                            padding=(dp(14), 0), spacing=dp(8))
-        self.titulo = Label(
-            markup=True, font_size="23sp", color=BLANCO,
-            halign="left", valign="middle",
-        )
+        self.titulo = Label(markup=True, font_size="22sp", color=BLANCO,
+                            halign="left", valign="middle")
         self.titulo.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
         cabecera.add_widget(self.titulo)
-        boton_fondo = BotonRedondo(
-            text="Fondo", color=CARD, texto_color=CABECERA, radio=14,
-            font_size="14sp", bold=True, size_hint_x=None, width=dp(72),
-        )
+        boton_fondo = BotonRedondo(text="Fondo", color=CARD, texto_color=CABECERA,
+                                   radio=14, font_size="14sp", bold=True,
+                                   size_hint_x=None, width=dp(72))
         boton_fondo.bind(on_release=lambda w: self.elegir_fondo())
         cabecera.add_widget(boton_fondo)
         raiz.add_widget(cabecera)
 
-        # ---- Fila para escribir una nota nueva ----
-        fila = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10))
-        caja_entrada = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0))
-        self.entrada = TextInput(
-            hint_text="Escribe una nota...", multiline=False,
-            font_size="17sp", background_normal="", background_active="",
-            background_color=(0, 0, 0, 0), foreground_color=TEXTO,
-            cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
-            padding=(0, dp(14)),
-        )
-        self.entrada.bind(on_text_validate=lambda w: self.agregar_nota())
-        caja_entrada.add_widget(self.entrada)
-        fila.add_widget(caja_entrada)
-        boton_add = BotonRedondo(
-            text="+", color=ACCENT, radio=16, font_size="28sp", bold=True,
-            size_hint_x=None, width=dp(60),
-        )
-        boton_add.bind(on_release=lambda w: self.agregar_nota())
-        fila.add_widget(boton_add)
-        raiz.add_widget(fila)
+        # ---- Barra de secciones (pestanas) ----
+        barra_nav = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        self.nav = {}
+        for clave, texto in [("notas", "Notas"), ("tareas", "Tareas"), ("dibujo", "Dibujo")]:
+            boton = BotonRedondo(text=texto, color=CARD_BORDE, texto_color=TEXTO,
+                                 radio=14, font_size="15sp", bold=True)
+            boton.bind(on_release=lambda w, c=clave: self.mostrar_seccion(c))
+            self.nav[clave] = boton
+            barra_nav.add_widget(boton)
+        raiz.add_widget(barra_nav)
 
-        # ---- Buscador ----
-        caja_buscar = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0),
-                              size_hint_y=None, height=dp(46))
-        self.buscador = TextInput(
-            hint_text="Buscar nota...", multiline=False,
-            font_size="15sp", background_normal="", background_active="",
-            background_color=(0, 0, 0, 0), foreground_color=TEXTO,
-            cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
-            padding=(0, dp(11)),
-        )
-        self.buscador.bind(text=lambda w, valor: self.actualizar_filtro(valor))
-        caja_buscar.add_widget(self.buscador)
-        raiz.add_widget(caja_buscar)
+        # ---- Contenido de la seccion ----
+        self.contenido = BoxLayout(orientation="vertical", spacing=dp(10))
+        raiz.add_widget(self.contenido)
 
-        # ---- Lista de notas ----
-        scroll = ScrollView()
-        self.lista = BoxLayout(
-            orientation="vertical", size_hint_y=None, spacing=dp(10),
-            padding=(0, dp(4)),
-        )
-        self.lista.bind(minimum_height=self.lista.setter("height"))
-        scroll.add_widget(self.lista)
-        raiz.add_widget(scroll)
-
-        self.refrescar_lista()
+        self.mostrar_seccion("notas")
         return raiz
+
+    # ---------- Cambio de seccion ----------
+    def mostrar_seccion(self, nombre):
+        self.seccion = nombre
+        for clave, boton in self.nav.items():
+            if clave == nombre:
+                boton.poner_color(ACCENT, BLANCO)
+            else:
+                boton.poner_color(CARD_BORDE, TEXTO)
+        self.contenido.clear_widgets()
+        if nombre == "notas":
+            self.construir_notas()
+        elif nombre == "tareas":
+            self.construir_tareas()
+        elif nombre == "dibujo":
+            self.construir_dibujo()
 
     # ---------- Fondo ----------
     def aplicar_fondo(self):
@@ -219,14 +235,14 @@ class AppNotas(App):
         contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(14))
         contenido.add_widget(Label(text="Elige un color de fondo:", color=TEXTO,
                                    size_hint_y=None, height=dp(24), font_size="16sp"))
-        fila_colores = BoxLayout(spacing=dp(10))
+        fila = BoxLayout(spacing=dp(10))
         popup = Popup(title="Color de fondo", size_hint=(0.9, 0.4),
                       title_color=TEXTO, separator_color=ACCENT)
         for idx, col in enumerate(FONDOS):
             swatch = BotonRedondo(color=col, radio=16)
             swatch.bind(on_release=lambda w, i=idx: self._poner_fondo(i, popup))
-            fila_colores.add_widget(swatch)
-        contenido.add_widget(fila_colores)
+            fila.add_widget(swatch)
+        contenido.add_widget(fila)
         popup.content = contenido
         popup.open()
 
@@ -236,7 +252,41 @@ class AppNotas(App):
         self.aplicar_fondo()
         popup.dismiss()
 
-    # ---------- Datos ----------
+    # ---------- Guardar/cargar datos ----------
+    def normalizar_nota(self, nota):
+        if isinstance(nota, str):
+            nota = {"texto": nota, "fecha": ""}
+        nota.setdefault("texto", "")
+        nota.setdefault("fecha", "")
+        nota.setdefault("fav", False)
+        nota.setdefault("color", 0)
+        return nota
+
+    def normalizar_tarea(self, tarea):
+        if isinstance(tarea, str):
+            tarea = {"texto": tarea}
+        tarea.setdefault("texto", "")
+        tarea.setdefault("hecha", False)
+        return tarea
+
+    def cargar_json(self, ruta, normalizar):
+        if not os.path.exists(ruta):
+            return []
+        try:
+            with open(ruta, "r", encoding="utf-8") as f:
+                datos = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return []
+        return [normalizar(d) for d in datos]
+
+    def guardar_notas(self):
+        with open(self.archivo, "w", encoding="utf-8") as f:
+            json.dump(self.notas, f, ensure_ascii=False, indent=2)
+
+    def guardar_tareas(self):
+        with open(self.archivo_tareas, "w", encoding="utf-8") as f:
+            json.dump(self.tareas, f, ensure_ascii=False, indent=2)
+
     def cargar_config(self):
         if os.path.exists(self.archivo_config):
             try:
@@ -250,109 +300,105 @@ class AppNotas(App):
         with open(self.archivo_config, "w", encoding="utf-8") as f:
             json.dump(self.config_app, f, ensure_ascii=False, indent=2)
 
-    def cargar_notas(self):
-        if not os.path.exists(self.archivo):
-            return []
-        try:
-            with open(self.archivo, "r", encoding="utf-8") as f:
-                datos = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return []
-        notas = []
-        for nota in datos:
-            if isinstance(nota, str):
-                nota = {"texto": nota, "fecha": ""}
-            nota.setdefault("texto", "")
-            nota.setdefault("fecha", "")
-            nota.setdefault("fav", False)
-            nota.setdefault("color", 0)
-            notas.append(nota)
-        return notas
+    # ================= SECCION NOTAS =================
+    def construir_notas(self):
+        fila = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
+        caja = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0))
+        self.entrada = TextInput(
+            hint_text="Escribe una nota...", multiline=False, font_size="17sp",
+            background_normal="", background_active="", background_color=(0, 0, 0, 0),
+            foreground_color=TEXTO, cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
+            padding=(0, dp(13)),
+        )
+        self.entrada.bind(on_text_validate=lambda w: self.agregar_nota())
+        caja.add_widget(self.entrada)
+        fila.add_widget(caja)
+        boton = BotonRedondo(text="+", color=ACCENT, radio=16, font_size="28sp",
+                             bold=True, size_hint_x=None, width=dp(56))
+        boton.bind(on_release=lambda w: self.agregar_nota())
+        fila.add_widget(boton)
+        self.contenido.add_widget(fila)
 
-    def guardar_notas(self):
-        with open(self.archivo, "w", encoding="utf-8") as f:
-            json.dump(self.notas, f, ensure_ascii=False, indent=2)
+        caja_buscar = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0),
+                              size_hint_y=None, height=dp(44))
+        self.buscador = TextInput(
+            hint_text="Buscar nota...", multiline=False, font_size="15sp",
+            background_normal="", background_active="", background_color=(0, 0, 0, 0),
+            foreground_color=TEXTO, cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
+            padding=(0, dp(10)),
+        )
+        self.buscador.bind(text=lambda w, v: self.actualizar_filtro(v))
+        caja_buscar.add_widget(self.buscador)
+        self.contenido.add_widget(caja_buscar)
 
-    # ---------- Buscador ----------
+        scroll = ScrollView()
+        self.lista = BoxLayout(orientation="vertical", size_hint_y=None,
+                               spacing=dp(10), padding=(0, dp(4)))
+        self.lista.bind(minimum_height=self.lista.setter("height"))
+        scroll.add_widget(self.lista)
+        self.contenido.add_widget(scroll)
+        self.refrescar_lista()
+
     def actualizar_filtro(self, texto):
         self.filtro = texto.strip().lower()
         self.refrescar_lista()
 
-    # ---------- Dibujar la lista ----------
     def refrescar_lista(self):
         cantidad = len(self.notas)
         etiqueta = "nota" if cantidad == 1 else "notas"
-        self.titulo.text = (
-            f"[b]Mis Notas[/b]  "
-            f"[size=14sp][color=fff0f5]({cantidad} {etiqueta})[/color][/size]"
-        )
+        self.titulo.text = (f"[b]Notas[/b]  "
+                            f"[size=14sp][color=fff0f5]({cantidad} {etiqueta})[/color][/size]")
         self.lista.clear_widgets()
-        visibles = [
-            (i, n) for i, n in enumerate(self.notas)
-            if self.filtro in n.get("texto", "").lower()
-        ]
+        visibles = [(i, n) for i, n in enumerate(self.notas)
+                    if self.filtro in n.get("texto", "").lower()]
         visibles.sort(key=lambda t: not t[1].get("fav", False))
         if not self.notas:
-            self._mensaje("Aun no tienes notas.\nEscribe una arriba y pulsa  +")
+            self._mensaje(self.lista, "Aun no tienes notas.\nEscribe una arriba y pulsa  +")
             return
         if not visibles:
-            self._mensaje("No se encontraron notas\ncon esa busqueda.")
+            self._mensaje(self.lista, "No se encontraron notas\ncon esa busqueda.")
             return
         for indice, nota in visibles:
             self.lista.add_widget(self.crear_tarjeta(indice, nota))
 
-    def _mensaje(self, texto):
-        self.lista.add_widget(Label(
-            text=texto, halign="center", valign="middle", size_hint_y=None,
-            height=dp(90), color=TEXTO_TENUE, font_size="16sp",
-        ))
+    def _mensaje(self, contenedor, texto):
+        contenedor.add_widget(Label(text=texto, halign="center", valign="middle",
+                                    size_hint_y=None, height=dp(90), color=TEXTO_TENUE,
+                                    font_size="16sp"))
 
     def crear_tarjeta(self, indice, nota):
         tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(78),
                           padding=(dp(10), dp(8)), spacing=dp(6))
-        color_tag = COLORES[nota.get("color", 0) % len(COLORES)]
-        tarjeta.add_widget(BarraColor(color_tag, size_hint_x=None, width=dp(6)))
-
+        tarjeta.add_widget(BarraColor(COLORES[nota.get("color", 0) % len(COLORES)],
+                                      size_hint_x=None, width=dp(6)))
         columna = BoxLayout(orientation="vertical", spacing=dp(2), padding=(dp(6), 0))
-        etiqueta = Label(
-            text=nota.get("texto", ""), halign="left", valign="middle",
-            font_size="17sp", color=TEXTO,
-        )
+        etiqueta = Label(text=nota.get("texto", ""), halign="left", valign="middle",
+                         font_size="17sp", color=TEXTO)
         etiqueta.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
         columna.add_widget(etiqueta)
-        etiqueta_fecha = Label(
-            text=nota.get("fecha", ""), halign="left", valign="middle",
-            font_size="12sp", color=TEXTO_TENUE, size_hint_y=None, height=dp(18),
-        )
-        etiqueta_fecha.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
-        columna.add_widget(etiqueta_fecha)
+        fecha = Label(text=nota.get("fecha", ""), halign="left", valign="middle",
+                      font_size="12sp", color=TEXTO_TENUE, size_hint_y=None, height=dp(18))
+        fecha.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        columna.add_widget(fecha)
         tarjeta.add_widget(columna)
 
         es_fav = nota.get("fav", False)
-        boton_fav = BotonRedondo(
-            text="*", color=(ORO if es_fav else CARD_BORDE),
-            texto_color=(BLANCO if es_fav else TEXTO_TENUE),
-            radio=20, font_size="22sp", bold=True, size_hint_x=None, width=dp(40),
-        )
-        boton_fav.bind(on_release=lambda w: self.alternar_favorito(indice))
-        tarjeta.add_widget(boton_fav)
-
-        boton_editar = BotonRedondo(
-            text="E", color=ACCENT, radio=20, font_size="16sp", bold=True,
-            size_hint_x=None, width=dp(40),
-        )
-        boton_editar.bind(on_release=lambda w: self.editar_nota(indice))
-        tarjeta.add_widget(boton_editar)
-
-        boton_borrar = BotonRedondo(
-            text="X", color=BORRAR, radio=20, font_size="18sp", bold=True,
-            size_hint_x=None, width=dp(40),
-        )
-        boton_borrar.bind(on_release=lambda w: self.confirmar_borrado(indice))
-        tarjeta.add_widget(boton_borrar)
+        b_fav = BotonRedondo(text="*", color=(ORO if es_fav else CARD_BORDE),
+                             texto_color=(BLANCO if es_fav else TEXTO_TENUE),
+                             radio=20, font_size="22sp", bold=True,
+                             size_hint_x=None, width=dp(40))
+        b_fav.bind(on_release=lambda w: self.alternar_favorito(indice))
+        tarjeta.add_widget(b_fav)
+        b_edit = BotonRedondo(text="E", color=ACCENT, radio=20, font_size="16sp",
+                              bold=True, size_hint_x=None, width=dp(40))
+        b_edit.bind(on_release=lambda w: self.editar_nota(indice))
+        tarjeta.add_widget(b_edit)
+        b_del = BotonRedondo(text="X", color=BORRAR, radio=20, font_size="18sp",
+                             bold=True, size_hint_x=None, width=dp(40))
+        b_del.bind(on_release=lambda w: self.confirmar_borrado(indice))
+        tarjeta.add_widget(b_del)
         return tarjeta
 
-    # ---------- Acciones ----------
     def agregar_nota(self):
         texto = self.entrada.text.strip()
         if texto:
@@ -372,27 +418,25 @@ class AppNotas(App):
         if not (0 <= indice < len(self.notas)):
             return
         contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(14))
-        contenido.add_widget(Label(
-            text="¿Seguro que quieres borrar esta nota?",
-            color=TEXTO, font_size="16sp", halign="center", valign="middle",
-        ))
+        contenido.add_widget(Label(text="¿Seguro que quieres borrar esta nota?",
+                                   color=TEXTO, font_size="16sp",
+                                   halign="center", valign="middle"))
         botones = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
-        boton_no = BotonRedondo(text="No", color=CARD_BORDE, texto_color=TEXTO, radio=14)
-        boton_si = BotonRedondo(text="Si, borrar", color=BORRAR, radio=14, bold=True)
-        botones.add_widget(boton_no)
-        botones.add_widget(boton_si)
+        b_no = BotonRedondo(text="No", color=CARD_BORDE, texto_color=TEXTO, radio=14)
+        b_si = BotonRedondo(text="Si, borrar", color=BORRAR, radio=14, bold=True)
+        botones.add_widget(b_no)
+        botones.add_widget(b_si)
         contenido.add_widget(botones)
         popup = Popup(title="Borrar nota", content=contenido, size_hint=(0.85, 0.4),
                       title_color=TEXTO, separator_color=BORRAR)
-        boton_no.bind(on_release=lambda w: popup.dismiss())
+        b_no.bind(on_release=lambda w: popup.dismiss())
 
         def borrar(_):
             self.notas.pop(indice)
             self.guardar_notas()
             self.refrescar_lista()
             popup.dismiss()
-
-        boton_si.bind(on_release=borrar)
+        b_si.bind(on_release=borrar)
         popup.open()
 
     def editar_nota(self, indice):
@@ -400,33 +444,28 @@ class AppNotas(App):
             return
         seleccion = {"color": self.notas[indice].get("color", 0)}
         contenido = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(12))
-        entrada = TextInput(
-            text=self.notas[indice].get("texto", ""), multiline=True,
-            font_size="17sp",
-        )
+        entrada = TextInput(text=self.notas[indice].get("texto", ""),
+                            multiline=True, font_size="17sp")
         contenido.add_widget(entrada)
         contenido.add_widget(Label(text="Color de etiqueta:", color=TEXTO,
                                    size_hint_y=None, height=dp(24), font_size="14sp"))
-        fila_colores = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
+        fila = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
         for idx, col in enumerate(COLORES):
-            texto_boton = "-" if col is None else ""
-            boton_color = BotonRedondo(
-                text=texto_boton, color=(col if col else CARD_BORDE),
-                texto_color=TEXTO, radio=14, bold=True,
-            )
-            boton_color.bind(on_release=lambda w, i=idx: seleccion.update(color=i))
-            fila_colores.add_widget(boton_color)
-        contenido.add_widget(fila_colores)
+            b = BotonRedondo(text=("-" if col is None else ""),
+                             color=(col if col else CARD_BORDE),
+                             texto_color=TEXTO, radio=14, bold=True)
+            b.bind(on_release=lambda w, i=idx: seleccion.update(color=i))
+            fila.add_widget(b)
+        contenido.add_widget(fila)
         botones = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
-        boton_cancelar = BotonRedondo(text="Cancelar", color=CARD_BORDE,
-                                      texto_color=TEXTO, radio=14)
-        boton_guardar = BotonRedondo(text="Guardar", color=ACCENT, radio=14, bold=True)
-        botones.add_widget(boton_cancelar)
-        botones.add_widget(boton_guardar)
+        b_cancel = BotonRedondo(text="Cancelar", color=CARD_BORDE, texto_color=TEXTO, radio=14)
+        b_guardar = BotonRedondo(text="Guardar", color=ACCENT, radio=14, bold=True)
+        botones.add_widget(b_cancel)
+        botones.add_widget(b_guardar)
         contenido.add_widget(botones)
         popup = Popup(title="Editar nota", content=contenido, size_hint=(0.9, 0.65),
                       title_color=TEXTO, separator_color=ACCENT)
-        boton_cancelar.bind(on_release=lambda w: popup.dismiss())
+        b_cancel.bind(on_release=lambda w: popup.dismiss())
 
         def guardar(_):
             nuevo = entrada.text.strip()
@@ -436,8 +475,151 @@ class AppNotas(App):
                 self.guardar_notas()
                 self.refrescar_lista()
             popup.dismiss()
+        b_guardar.bind(on_release=guardar)
+        popup.open()
 
-        boton_guardar.bind(on_release=guardar)
+    # ================= SECCION TAREAS =================
+    def construir_tareas(self):
+        fila = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
+        caja = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0))
+        self.tarea_entrada = TextInput(
+            hint_text="Nueva tarea...", multiline=False, font_size="17sp",
+            background_normal="", background_active="", background_color=(0, 0, 0, 0),
+            foreground_color=TEXTO, cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
+            padding=(0, dp(13)),
+        )
+        self.tarea_entrada.bind(on_text_validate=lambda w: self.agregar_tarea())
+        caja.add_widget(self.tarea_entrada)
+        fila.add_widget(caja)
+        boton = BotonRedondo(text="+", color=ACCENT, radio=16, font_size="28sp",
+                             bold=True, size_hint_x=None, width=dp(56))
+        boton.bind(on_release=lambda w: self.agregar_tarea())
+        fila.add_widget(boton)
+        self.contenido.add_widget(fila)
+
+        scroll = ScrollView()
+        self.tareas_lista = BoxLayout(orientation="vertical", size_hint_y=None,
+                                      spacing=dp(10), padding=(0, dp(4)))
+        self.tareas_lista.bind(minimum_height=self.tareas_lista.setter("height"))
+        scroll.add_widget(self.tareas_lista)
+        self.contenido.add_widget(scroll)
+        self.refrescar_tareas()
+
+    def refrescar_tareas(self):
+        hechas = sum(1 for t in self.tareas if t.get("hecha"))
+        total = len(self.tareas)
+        self.titulo.text = (f"[b]Tareas[/b]  "
+                            f"[size=14sp][color=fff0f5]({hechas}/{total} hechas)[/color][/size]")
+        self.tareas_lista.clear_widgets()
+        if not self.tareas:
+            self._mensaje(self.tareas_lista, "Aun no tienes tareas.\nEscribe una arriba y pulsa  +")
+            return
+        for indice, tarea in enumerate(self.tareas):
+            self.tareas_lista.add_widget(self.crear_tarjeta_tarea(indice, tarea))
+
+    def crear_tarjeta_tarea(self, indice, tarea):
+        hecha = tarea.get("hecha", False)
+        tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(58),
+                          padding=(dp(10), dp(6)), spacing=dp(8))
+        casilla = BotonRedondo(text=("v" if hecha else ""),
+                               color=(VERDE if hecha else CARD_BORDE),
+                               texto_color=BLANCO, radio=10, font_size="18sp",
+                               bold=True, size_hint_x=None, width=dp(40))
+        casilla.bind(on_release=lambda w: self.alternar_tarea(indice))
+        tarjeta.add_widget(casilla)
+        texto = tarea.get("texto", "")
+        if hecha:
+            etiqueta = Label(text=f"[s]{texto}[/s]", markup=True, halign="left",
+                             valign="middle", font_size="17sp", color=TEXTO_TENUE)
+        else:
+            etiqueta = Label(text=texto, halign="left", valign="middle",
+                             font_size="17sp", color=TEXTO)
+        etiqueta.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        tarjeta.add_widget(etiqueta)
+        b_del = BotonRedondo(text="X", color=BORRAR, radio=18, font_size="16sp",
+                             bold=True, size_hint_x=None, width=dp(40))
+        b_del.bind(on_release=lambda w: self.borrar_tarea(indice))
+        tarjeta.add_widget(b_del)
+        return tarjeta
+
+    def agregar_tarea(self):
+        texto = self.tarea_entrada.text.strip()
+        if texto:
+            self.tareas.append({"texto": texto, "hecha": False})
+            self.guardar_tareas()
+            self.tarea_entrada.text = ""
+            self.refrescar_tareas()
+
+    def alternar_tarea(self, indice):
+        if 0 <= indice < len(self.tareas):
+            self.tareas[indice]["hecha"] = not self.tareas[indice].get("hecha", False)
+            self.guardar_tareas()
+            self.refrescar_tareas()
+
+    def borrar_tarea(self, indice):
+        if 0 <= indice < len(self.tareas):
+            self.tareas.pop(indice)
+            self.guardar_tareas()
+            self.refrescar_tareas()
+
+    # ================= SECCION DIBUJO =================
+    def construir_dibujo(self):
+        self.titulo.text = "[b]Dibujo y bocetos[/b]"
+
+        # Fila 1: colores + borrador
+        barra1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(6))
+        for col in DIBUJO_COLORES:
+            b = BotonRedondo(color=col, radio=12, size_hint_x=None, width=dp(40))
+            b.bind(on_release=lambda w, c=col: self.set_color(c))
+            barra1.add_widget(b)
+        borrador = BotonRedondo(text="Borrador", color=CARD_BORDE, texto_color=TEXTO,
+                                radio=12, font_size="12sp", bold=True)
+        borrador.bind(on_release=lambda w: self.set_color((1, 1, 1, 1)))
+        barra1.add_widget(borrador)
+        self.contenido.add_widget(barra1)
+
+        # Fila 2: grosores + limpiar + guardar
+        barra2 = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
+        for nombre, g in [("Fino", 2), ("Medio", 5), ("Grueso", 10)]:
+            b = BotonRedondo(text=nombre, color=ACCENT, radio=12, font_size="13sp", bold=True)
+            b.bind(on_release=lambda w, gg=g: self.set_grosor(gg))
+            barra2.add_widget(b)
+        limpiar = BotonRedondo(text="Limpiar", color=BORRAR, radio=12, font_size="13sp", bold=True)
+        limpiar.bind(on_release=lambda w: self.lienzo.limpiar())
+        barra2.add_widget(limpiar)
+        guardar = BotonRedondo(text="Guardar", color=VERDE, radio=12, font_size="13sp", bold=True)
+        guardar.bind(on_release=lambda w: self.guardar_dibujo())
+        barra2.add_widget(guardar)
+        self.contenido.add_widget(barra2)
+
+        # El lienzo se crea una sola vez para no perder el dibujo al cambiar de seccion
+        if self.lienzo is None:
+            self.lienzo = Lienzo()
+        marco = Tarjeta(color=CARD, radio=16, padding=dp(4))
+        marco.add_widget(self.lienzo)
+        self.contenido.add_widget(marco)
+
+    def set_color(self, color):
+        if self.lienzo:
+            self.lienzo.color_lapiz = color
+
+    def set_grosor(self, grosor):
+        if self.lienzo:
+            self.lienzo.grosor = grosor
+
+    def guardar_dibujo(self):
+        if not self.lienzo:
+            return
+        ruta = os.path.join(self.user_data_dir, "dibujo.png")
+        self.lienzo.export_to_png(ruta)
+        contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
+        contenido.add_widget(Label(text="Dibujo guardado en:\n" + ruta, color=TEXTO,
+                                   font_size="14sp", halign="center", valign="middle"))
+        b_ok = BotonRedondo(text="OK", color=ACCENT, radio=14, size_hint_y=None, height=dp(46))
+        contenido.add_widget(b_ok)
+        popup = Popup(title="Guardado", content=contenido, size_hint=(0.85, 0.4),
+                      title_color=TEXTO, separator_color=VERDE)
+        b_ok.bind(on_release=lambda w: popup.dismiss())
         popup.open()
 
 
