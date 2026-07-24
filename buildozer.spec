@@ -17,7 +17,10 @@ source.include_exts = py,png,jpg,kv,atlas,json
 version = 1.0
 
 # Librerias de Python que necesita la app
-requirements = python3,kivy
+requirements = python3,kivy,plyer
+
+# Permisos de Android (para poder mostrar notificaciones de recordatorios)
+android.permissions = POST_NOTIFICATIONS
 
 # La app se ve en vertical (como celular). Usa 'all' si quieres que rote.
 orientation = portrait

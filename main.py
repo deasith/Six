@@ -1,11 +1,15 @@
 """
 Mi Cuaderno - app para tablet/celular Android hecha con Python y Kivy.
-Estilo coquette (rosa pastel) con 3 secciones: Notas, Tareas y Dibujo.
+Estilo coquette (rosa pastel). Secciones: Notas, Tareas (lista/tablero),
+Avisos (recordatorios inteligentes) y Dibujo.
 
 Funciones:
 - NOTAS: crear, editar, buscar, favoritos, color de etiqueta, fecha/hora
-- TAREAS: lista de tareas con casilla para marcar completadas
-- DIBUJO: lienzo con colores, grosores de lapiz, borrador, limpiar y guardar
+- TAREAS: lista con casillas + vista TABLERO estilo Kanban
+  (Pendiente / En proceso / Terminado) moviendo tarjetas entre columnas
+- AVISOS: escribe en lenguaje normal ("Llamar a Juan el lunes a las 5 pm")
+  y la app detecta la fecha/hora y te notifica cuando llega
+- DIBUJO: lienzo con colores, grosores, borrador, limpiar y guardar
 - Color de fondo personalizable (se guarda)
 
 Este es el archivo principal que Buildozer usa para crear el .apk.
@@ -18,11 +22,13 @@ Como probarla en tu computador Linux:
 import datetime
 import json
 import os
+import re
 
 from kivy.config import Config
 Config.set("input", "mouse", "mouse,disable_multitouch")
 
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.metrics import dp
@@ -41,6 +47,7 @@ CARD        = (1.00, 0.97, 0.98, 1)
 CARD_BORDE  = (0.94, 0.88, 0.91, 1)
 BORRAR      = (0.90, 0.45, 0.52, 1)
 VERDE       = (0.45, 0.78, 0.55, 1)
+AMARILLO    = (0.98, 0.75, 0.35, 1)
 TEXTO       = (0.38, 0.22, 0.28, 1)
 TEXTO_TENUE = (0.62, 0.48, 0.54, 1)
 ORO         = (0.95, 0.72, 0.35, 1)
@@ -56,7 +63,6 @@ COLORES = [
     (0.50, 0.80, 0.60, 1), (0.98, 0.80, 0.40, 1), (0.98, 0.60, 0.45, 1),
 ]
 
-# Colores para dibujar
 DIBUJO_COLORES = [
     (0.20, 0.20, 0.25, 1), (0.90, 0.30, 0.40, 1), (0.30, 0.55, 0.95, 1),
     (0.30, 0.75, 0.45, 1), (0.98, 0.75, 0.30, 1), (0.95, 0.50, 0.65, 1),
@@ -64,11 +70,100 @@ DIBUJO_COLORES = [
 
 MESES = ["ene", "feb", "mar", "abr", "may", "jun",
          "jul", "ago", "sep", "oct", "nov", "dic"]
+DIAS_CORTO = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"]
+
+DIAS_SEMANA = {
+    "lunes": 0, "martes": 1, "miercoles": 2, "miércoles": 2, "jueves": 3,
+    "viernes": 4, "sabado": 5, "sábado": 5, "domingo": 6,
+}
+MESES_NUM = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+    "julio": 7, "agosto": 8, "septiembre": 9, "setiembre": 9, "octubre": 10,
+    "noviembre": 11, "diciembre": 12,
+}
 
 
 def fecha_ahora():
     ahora = datetime.datetime.now()
     return f"{ahora.day} {MESES[ahora.month - 1]} {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}"
+
+
+def formatear_cuando(dt):
+    return f"{DIAS_CORTO[dt.weekday()]} {dt.day} {MESES[dt.month - 1]}, {dt.hour:02d}:{dt.minute:02d}"
+
+
+def parsear_fecha_hora(texto):
+    """Detecta una fecha y hora dentro de un texto en espanol.
+    Devuelve un datetime, o None si no encuentra nada."""
+    t = " " + texto.lower() + " "
+    ahora = datetime.datetime.now()
+    fecha = None
+
+    # Fechas relativas
+    if "pasado manana" in t or "pasado mañana" in t:
+        fecha = ahora.date() + datetime.timedelta(days=2)
+    elif "manana" in t or "mañana" in t:
+        fecha = ahora.date() + datetime.timedelta(days=1)
+    elif "hoy" in t:
+        fecha = ahora.date()
+
+    # Dia de la semana ("el lunes")
+    if fecha is None:
+        for nombre, wd in DIAS_SEMANA.items():
+            if nombre in t:
+                delta = (wd - ahora.weekday()) % 7
+                if delta == 0:
+                    delta = 7   # el proximo, no hoy
+                fecha = ahora.date() + datetime.timedelta(days=delta)
+                break
+
+    # Fecha con numero ("el 25 de julio", "el 25")
+    m = re.search(r"\bel\s+(\d{1,2})(?:\s+de\s+([a-záéíóú]+))?", t)
+    if m:
+        dia = int(m.group(1))
+        mes = MESES_NUM.get(m.group(2), ahora.month) if m.group(2) else ahora.month
+        try:
+            cand = datetime.date(ahora.year, mes, dia)
+            if cand < ahora.date():
+                cand = datetime.date(ahora.year + 1, mes, dia)
+            fecha = cand
+        except ValueError:
+            pass
+
+    # Hora
+    hora = None
+    minuto = 0
+    m = re.search(
+        r"a\s+la[s]?\s+(\d{1,2})(?::(\d{2}))?\s*"
+        r"(a\.?\s*m\.?|p\.?\s*m\.?|de\s+la\s+tarde|de\s+la\s+noche|de\s+la\s+manana|de\s+la\s+mañana)?",
+        t,
+    )
+    if not m:
+        m = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?)", t)
+    if m:
+        hora = int(m.group(1))
+        if m.group(2):
+            minuto = int(m.group(2))
+        seg = m.group(0)
+        if "p" in seg or "tarde" in seg or "noche" in seg:
+            if hora < 12:
+                hora += 12
+        elif "a" in seg and ("m" in seg or "manana" in seg or "mañana" in seg):
+            if hora == 12:
+                hora = 0
+        if hora > 23 or minuto > 59:
+            hora = None
+
+    if fecha is None and hora is None:
+        return None
+    if fecha is None:
+        fecha = ahora.date()
+    if hora is None:
+        hora, minuto = 9, 0
+    cuando = datetime.datetime.combine(fecha, datetime.time(hora, minuto))
+    if cuando < ahora:
+        cuando += datetime.timedelta(days=1)
+    return cuando
 
 
 class Tarjeta(BoxLayout):
@@ -127,8 +222,6 @@ class BotonRedondo(Button):
 
 
 class Lienzo(Widget):
-    """Area blanca para dibujar con el dedo o el raton."""
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.color_lapiz = (0.20, 0.20, 0.25, 1)
@@ -164,48 +257,53 @@ class Lienzo(Widget):
 class AppNotas(App):
     def build(self):
         self.title = "Mi Cuaderno"
-        self.archivo = os.path.join(self.user_data_dir, "notas.json")
-        self.archivo_tareas = os.path.join(self.user_data_dir, "tareas.json")
-        self.archivo_config = os.path.join(self.user_data_dir, "config.json")
+        d = self.user_data_dir
+        self.archivo = os.path.join(d, "notas.json")
+        self.archivo_tareas = os.path.join(d, "tareas.json")
+        self.archivo_recordatorios = os.path.join(d, "recordatorios.json")
+        self.archivo_config = os.path.join(d, "config.json")
         self.notas = self.cargar_json(self.archivo, self.normalizar_nota)
         self.tareas = self.cargar_json(self.archivo_tareas, self.normalizar_tarea)
+        self.recordatorios = self.cargar_json(self.archivo_recordatorios, self.normalizar_recordatorio)
         self.config_app = self.cargar_config()
         self.filtro = ""
         self.lienzo = None
         self.seccion = "notas"
+        self.vista_tareas = "lista"
 
         self.aplicar_fondo()
 
         raiz = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(10))
 
-        # ---- Cabecera ----
-        cabecera = Tarjeta(color=CABECERA, radio=22, size_hint_y=None, height=dp(60),
+        cabecera = Tarjeta(color=CABECERA, radio=22, size_hint_y=None, height=dp(58),
                            padding=(dp(14), 0), spacing=dp(8))
-        self.titulo = Label(markup=True, font_size="22sp", color=BLANCO,
+        self.titulo = Label(markup=True, font_size="21sp", color=BLANCO,
                             halign="left", valign="middle")
         self.titulo.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
         cabecera.add_widget(self.titulo)
         boton_fondo = BotonRedondo(text="Fondo", color=CARD, texto_color=CABECERA,
                                    radio=14, font_size="14sp", bold=True,
-                                   size_hint_x=None, width=dp(72))
+                                   size_hint_x=None, width=dp(70))
         boton_fondo.bind(on_release=lambda w: self.elegir_fondo())
         cabecera.add_widget(boton_fondo)
         raiz.add_widget(cabecera)
 
-        # ---- Barra de secciones (pestanas) ----
-        barra_nav = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        barra_nav = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
         self.nav = {}
-        for clave, texto in [("notas", "Notas"), ("tareas", "Tareas"), ("dibujo", "Dibujo")]:
+        for clave, texto in [("notas", "Notas"), ("tareas", "Tareas"),
+                             ("avisos", "Avisos"), ("dibujo", "Dibujo")]:
             boton = BotonRedondo(text=texto, color=CARD_BORDE, texto_color=TEXTO,
-                                 radio=14, font_size="15sp", bold=True)
+                                 radio=14, font_size="14sp", bold=True)
             boton.bind(on_release=lambda w, c=clave: self.mostrar_seccion(c))
             self.nav[clave] = boton
             barra_nav.add_widget(boton)
         raiz.add_widget(barra_nav)
 
-        # ---- Contenido de la seccion ----
         self.contenido = BoxLayout(orientation="vertical", spacing=dp(10))
         raiz.add_widget(self.contenido)
+
+        # Revisa los recordatorios cada 20 segundos
+        Clock.schedule_interval(self.revisar_recordatorios, 20)
 
         self.mostrar_seccion("notas")
         return raiz
@@ -223,6 +321,8 @@ class AppNotas(App):
             self.construir_notas()
         elif nombre == "tareas":
             self.construir_tareas()
+        elif nombre == "avisos":
+            self.construir_avisos()
         elif nombre == "dibujo":
             self.construir_dibujo()
 
@@ -252,7 +352,7 @@ class AppNotas(App):
         self.aplicar_fondo()
         popup.dismiss()
 
-    # ---------- Guardar/cargar datos ----------
+    # ---------- Guardar/cargar ----------
     def normalizar_nota(self, nota):
         if isinstance(nota, str):
             nota = {"texto": nota, "fecha": ""}
@@ -266,8 +366,18 @@ class AppNotas(App):
         if isinstance(tarea, str):
             tarea = {"texto": tarea}
         tarea.setdefault("texto", "")
-        tarea.setdefault("hecha", False)
+        if "estado" not in tarea:
+            tarea["estado"] = 2 if tarea.get("hecha") else 0
+        tarea.pop("hecha", None)
         return tarea
+
+    def normalizar_recordatorio(self, r):
+        if isinstance(r, str):
+            r = {"texto": r}
+        r.setdefault("texto", "")
+        r.setdefault("cuando", "")
+        r.setdefault("avisado", False)
+        return r
 
     def cargar_json(self, ruta, normalizar):
         if not os.path.exists(ruta):
@@ -279,13 +389,18 @@ class AppNotas(App):
             return []
         return [normalizar(d) for d in datos]
 
+    def _guardar(self, ruta, datos):
+        with open(ruta, "w", encoding="utf-8") as f:
+            json.dump(datos, f, ensure_ascii=False, indent=2)
+
     def guardar_notas(self):
-        with open(self.archivo, "w", encoding="utf-8") as f:
-            json.dump(self.notas, f, ensure_ascii=False, indent=2)
+        self._guardar(self.archivo, self.notas)
 
     def guardar_tareas(self):
-        with open(self.archivo_tareas, "w", encoding="utf-8") as f:
-            json.dump(self.tareas, f, ensure_ascii=False, indent=2)
+        self._guardar(self.archivo_tareas, self.tareas)
+
+    def guardar_recordatorios(self):
+        self._guardar(self.archivo_recordatorios, self.recordatorios)
 
     def cargar_config(self):
         if os.path.exists(self.archivo_config):
@@ -297,8 +412,12 @@ class AppNotas(App):
         return {"fondo": 0}
 
     def guardar_config(self):
-        with open(self.archivo_config, "w", encoding="utf-8") as f:
-            json.dump(self.config_app, f, ensure_ascii=False, indent=2)
+        self._guardar(self.archivo_config, self.config_app)
+
+    def _mensaje(self, contenedor, texto):
+        contenedor.add_widget(Label(text=texto, halign="center", valign="middle",
+                                    size_hint_y=None, height=dp(90), color=TEXTO_TENUE,
+                                    font_size="16sp"))
 
     # ================= SECCION NOTAS =================
     def construir_notas(self):
@@ -308,8 +427,7 @@ class AppNotas(App):
             hint_text="Escribe una nota...", multiline=False, font_size="17sp",
             background_normal="", background_active="", background_color=(0, 0, 0, 0),
             foreground_color=TEXTO, cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
-            padding=(0, dp(13)),
-        )
+            padding=(0, dp(13)))
         self.entrada.bind(on_text_validate=lambda w: self.agregar_nota())
         caja.add_widget(self.entrada)
         fila.add_widget(caja)
@@ -325,8 +443,7 @@ class AppNotas(App):
             hint_text="Buscar nota...", multiline=False, font_size="15sp",
             background_normal="", background_active="", background_color=(0, 0, 0, 0),
             foreground_color=TEXTO, cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
-            padding=(0, dp(10)),
-        )
+            padding=(0, dp(10)))
         self.buscador.bind(text=lambda w, v: self.actualizar_filtro(v))
         caja_buscar.add_widget(self.buscador)
         self.contenido.add_widget(caja_buscar)
@@ -347,7 +464,7 @@ class AppNotas(App):
         cantidad = len(self.notas)
         etiqueta = "nota" if cantidad == 1 else "notas"
         self.titulo.text = (f"[b]Notas[/b]  "
-                            f"[size=14sp][color=fff0f5]({cantidad} {etiqueta})[/color][/size]")
+                            f"[size=13sp][color=fff0f5]({cantidad} {etiqueta})[/color][/size]")
         self.lista.clear_widgets()
         visibles = [(i, n) for i, n in enumerate(self.notas)
                     if self.filtro in n.get("texto", "").lower()]
@@ -360,11 +477,6 @@ class AppNotas(App):
             return
         for indice, nota in visibles:
             self.lista.add_widget(self.crear_tarjeta(indice, nota))
-
-    def _mensaje(self, contenedor, texto):
-        contenedor.add_widget(Label(text=texto, halign="center", valign="middle",
-                                    size_hint_y=None, height=dp(90), color=TEXTO_TENUE,
-                                    font_size="16sp"))
 
     def crear_tarjeta(self, indice, nota):
         tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(78),
@@ -478,7 +590,7 @@ class AppNotas(App):
         b_guardar.bind(on_release=guardar)
         popup.open()
 
-    # ================= SECCION TAREAS =================
+    # ================= SECCION TAREAS (lista + tablero) =================
     def construir_tareas(self):
         fila = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
         caja = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0))
@@ -486,8 +598,7 @@ class AppNotas(App):
             hint_text="Nueva tarea...", multiline=False, font_size="17sp",
             background_normal="", background_active="", background_color=(0, 0, 0, 0),
             foreground_color=TEXTO, cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
-            padding=(0, dp(13)),
-        )
+            padding=(0, dp(13)))
         self.tarea_entrada.bind(on_text_validate=lambda w: self.agregar_tarea())
         caja.add_widget(self.tarea_entrada)
         fila.add_widget(caja)
@@ -497,19 +608,40 @@ class AppNotas(App):
         fila.add_widget(boton)
         self.contenido.add_widget(fila)
 
-        scroll = ScrollView()
-        self.tareas_lista = BoxLayout(orientation="vertical", size_hint_y=None,
-                                      spacing=dp(10), padding=(0, dp(4)))
-        self.tareas_lista.bind(minimum_height=self.tareas_lista.setter("height"))
-        scroll.add_widget(self.tareas_lista)
-        self.contenido.add_widget(scroll)
-        self.refrescar_tareas()
+        # Boton para cambiar de vista (Lista <-> Tablero)
+        fila_vista = BoxLayout(size_hint_y=None, height=dp(38), spacing=dp(8))
+        fila_vista.add_widget(Widget())
+        texto_vista = "Ver: Lista" if self.vista_tareas == "lista" else "Ver: Tablero"
+        b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=12,
+                               font_size="13sp", bold=True, size_hint_x=None, width=dp(140))
+        b_vista.bind(on_release=lambda w: self.alternar_vista_tareas())
+        fila_vista.add_widget(b_vista)
+        self.contenido.add_widget(fila_vista)
 
-    def refrescar_tareas(self):
-        hechas = sum(1 for t in self.tareas if t.get("hecha"))
+        if self.vista_tareas == "lista":
+            scroll = ScrollView()
+            self.tareas_lista = BoxLayout(orientation="vertical", size_hint_y=None,
+                                          spacing=dp(10), padding=(0, dp(4)))
+            self.tareas_lista.bind(minimum_height=self.tareas_lista.setter("height"))
+            scroll.add_widget(self.tareas_lista)
+            self.contenido.add_widget(scroll)
+            self.refrescar_tareas()
+        else:
+            self.construir_tablero()
+
+    def alternar_vista_tareas(self):
+        self.vista_tareas = "tablero" if self.vista_tareas == "lista" else "lista"
+        self.mostrar_seccion("tareas")
+
+    def _titulo_tareas(self):
+        hechas = sum(1 for t in self.tareas if t.get("estado") == 2)
         total = len(self.tareas)
         self.titulo.text = (f"[b]Tareas[/b]  "
-                            f"[size=14sp][color=fff0f5]({hechas}/{total} hechas)[/color][/size]")
+                            f"[size=13sp][color=fff0f5]({hechas}/{total} hechas)[/color][/size]")
+
+    # ---- Vista Lista ----
+    def refrescar_tareas(self):
+        self._titulo_tareas()
         self.tareas_lista.clear_widgets()
         if not self.tareas:
             self._mensaje(self.tareas_lista, "Aun no tienes tareas.\nEscribe una arriba y pulsa  +")
@@ -518,7 +650,7 @@ class AppNotas(App):
             self.tareas_lista.add_widget(self.crear_tarjeta_tarea(indice, tarea))
 
     def crear_tarjeta_tarea(self, indice, tarea):
-        hecha = tarea.get("hecha", False)
+        hecha = tarea.get("estado") == 2
         tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(58),
                           padding=(dp(10), dp(6)), spacing=dp(8))
         casilla = BotonRedondo(text=("v" if hecha else ""),
@@ -529,7 +661,7 @@ class AppNotas(App):
         tarjeta.add_widget(casilla)
         texto = tarea.get("texto", "")
         if hecha:
-            etiqueta = Label(text=f"[s]{texto}[/s]", markup=True, halign="left",
+            etiqueta = Label(text="[s]" + texto + "[/s]", markup=True, halign="left",
                              valign="middle", font_size="17sp", color=TEXTO_TENUE)
         else:
             etiqueta = Label(text=texto, halign="left", valign="middle",
@@ -542,17 +674,9 @@ class AppNotas(App):
         tarjeta.add_widget(b_del)
         return tarjeta
 
-    def agregar_tarea(self):
-        texto = self.tarea_entrada.text.strip()
-        if texto:
-            self.tareas.append({"texto": texto, "hecha": False})
-            self.guardar_tareas()
-            self.tarea_entrada.text = ""
-            self.refrescar_tareas()
-
     def alternar_tarea(self, indice):
         if 0 <= indice < len(self.tareas):
-            self.tareas[indice]["hecha"] = not self.tareas[indice].get("hecha", False)
+            self.tareas[indice]["estado"] = 0 if self.tareas[indice].get("estado") == 2 else 2
             self.guardar_tareas()
             self.refrescar_tareas()
 
@@ -562,11 +686,215 @@ class AppNotas(App):
             self.guardar_tareas()
             self.refrescar_tareas()
 
+    # ---- Vista Tablero (Kanban) ----
+    def construir_tablero(self):
+        board = BoxLayout(spacing=dp(8))
+        self.columnas = {}
+        defs = [(0, "Pendiente", CABECERA), (1, "En proceso", AMARILLO),
+                (2, "Terminado", VERDE)]
+        for estado, titulo, col in defs:
+            columna = Tarjeta(color=CARD, radio=14, orientation="vertical",
+                              padding=dp(6), spacing=dp(6))
+            enc = Tarjeta(color=col, radio=10, size_hint_y=None, height=dp(34))
+            enc.add_widget(Label(text=titulo, color=BLANCO, bold=True, font_size="13sp"))
+            columna.add_widget(enc)
+            scroll = ScrollView()
+            inner = BoxLayout(orientation="vertical", size_hint_y=None,
+                              spacing=dp(6), padding=(0, dp(2)))
+            inner.bind(minimum_height=inner.setter("height"))
+            scroll.add_widget(inner)
+            columna.add_widget(scroll)
+            self.columnas[estado] = inner
+            board.add_widget(columna)
+        self.contenido.add_widget(board)
+        self.refrescar_tablero()
+
+    def refrescar_tablero(self):
+        self._titulo_tareas()
+        for inner in self.columnas.values():
+            inner.clear_widgets()
+        for indice, tarea in enumerate(self.tareas):
+            estado = tarea.get("estado", 0)
+            if estado not in self.columnas:
+                estado = 0
+            self.columnas[estado].add_widget(self.crear_tarjeta_kanban(indice, tarea))
+
+    def crear_tarjeta_kanban(self, indice, tarea):
+        estado = tarea.get("estado", 0)
+        card = Tarjeta(color=CARD_BORDE, radio=12, orientation="vertical",
+                       size_hint_y=None, height=dp(96), padding=dp(6), spacing=dp(4))
+        lbl = Label(text=tarea.get("texto", ""), color=TEXTO, font_size="13sp",
+                    halign="left", valign="top")
+        lbl.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        card.add_widget(lbl)
+        botones = BoxLayout(size_hint_y=None, height=dp(30), spacing=dp(4))
+        b_izq = BotonRedondo(text="<", color=(ACCENT if estado > 0 else CARD),
+                             texto_color=(BLANCO if estado > 0 else TEXTO_TENUE),
+                             radio=8, font_size="15sp", bold=True)
+        b_izq.bind(on_release=lambda w: self.mover_tarea(indice, -1))
+        b_der = BotonRedondo(text=">", color=(ACCENT if estado < 2 else CARD),
+                             texto_color=(BLANCO if estado < 2 else TEXTO_TENUE),
+                             radio=8, font_size="15sp", bold=True)
+        b_der.bind(on_release=lambda w: self.mover_tarea(indice, 1))
+        b_del = BotonRedondo(text="X", color=BORRAR, radio=8, font_size="12sp",
+                             bold=True, size_hint_x=None, width=dp(32))
+        b_del.bind(on_release=lambda w: self.borrar_tarea_tablero(indice))
+        botones.add_widget(b_izq)
+        botones.add_widget(b_der)
+        botones.add_widget(b_del)
+        card.add_widget(botones)
+        return card
+
+    def mover_tarea(self, indice, delta):
+        if 0 <= indice < len(self.tareas):
+            nuevo = self.tareas[indice].get("estado", 0) + delta
+            self.tareas[indice]["estado"] = max(0, min(2, nuevo))
+            self.guardar_tareas()
+            self.refrescar_tablero()
+
+    def borrar_tarea_tablero(self, indice):
+        if 0 <= indice < len(self.tareas):
+            self.tareas.pop(indice)
+            self.guardar_tareas()
+            self.refrescar_tablero()
+
+    def agregar_tarea(self):
+        texto = self.tarea_entrada.text.strip()
+        if texto:
+            self.tareas.append({"texto": texto, "estado": 0})
+            self.guardar_tareas()
+            self.tarea_entrada.text = ""
+            if self.vista_tareas == "lista":
+                self.refrescar_tareas()
+            else:
+                self.refrescar_tablero()
+
+    # ================= SECCION AVISOS (recordatorios) =================
+    def construir_avisos(self):
+        self.titulo.text = "[b]Recordatorios[/b]"
+        fila = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
+        caja = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0))
+        self.aviso_entrada = TextInput(
+            hint_text="Ej: Llamar a Juan el lunes a las 5 pm", multiline=False,
+            font_size="15sp", background_normal="", background_active="",
+            background_color=(0, 0, 0, 0), foreground_color=TEXTO, cursor_color=ACCENT,
+            hint_text_color=TEXTO_TENUE, padding=(0, dp(13)))
+        self.aviso_entrada.bind(on_text_validate=lambda w: self.agregar_recordatorio())
+        caja.add_widget(self.aviso_entrada)
+        fila.add_widget(caja)
+        boton = BotonRedondo(text="+", color=ACCENT, radio=16, font_size="28sp",
+                             bold=True, size_hint_x=None, width=dp(56))
+        boton.bind(on_release=lambda w: self.agregar_recordatorio())
+        fila.add_widget(boton)
+        self.contenido.add_widget(fila)
+
+        info = Label(text="Escribe con dia y hora y yo detecto cuando avisarte.",
+                     color=TEXTO_TENUE, font_size="12sp", size_hint_y=None, height=dp(22))
+        self.contenido.add_widget(info)
+
+        scroll = ScrollView()
+        self.avisos_lista = BoxLayout(orientation="vertical", size_hint_y=None,
+                                      spacing=dp(10), padding=(0, dp(4)))
+        self.avisos_lista.bind(minimum_height=self.avisos_lista.setter("height"))
+        scroll.add_widget(self.avisos_lista)
+        self.contenido.add_widget(scroll)
+        self.refrescar_avisos()
+
+    def refrescar_avisos(self):
+        if self.seccion != "avisos":
+            return
+        self.avisos_lista.clear_widgets()
+        if not self.recordatorios:
+            self._mensaje(self.avisos_lista, "Aun no tienes recordatorios.")
+            return
+        for indice, r in enumerate(self.recordatorios):
+            self.avisos_lista.add_widget(self.crear_tarjeta_aviso(indice, r))
+
+    def crear_tarjeta_aviso(self, indice, r):
+        tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(74),
+                          padding=(dp(12), dp(8)), spacing=dp(8))
+        columna = BoxLayout(orientation="vertical", spacing=dp(2))
+        etiqueta = Label(text=r.get("texto", ""), halign="left", valign="middle",
+                         font_size="16sp", color=TEXTO)
+        etiqueta.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        columna.add_widget(etiqueta)
+        if r.get("cuando"):
+            try:
+                dt = datetime.datetime.fromisoformat(r["cuando"])
+                info = "Avisare: " + formatear_cuando(dt)
+                if r.get("avisado"):
+                    info = "Ya avisado - " + formatear_cuando(dt)
+            except ValueError:
+                info = ""
+        else:
+            info = "No detecte fecha/hora"
+        sub = Label(text=info, halign="left", valign="middle", font_size="12sp",
+                    color=TEXTO_TENUE, size_hint_y=None, height=dp(18))
+        sub.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        columna.add_widget(sub)
+        tarjeta.add_widget(columna)
+        b_del = BotonRedondo(text="X", color=BORRAR, radio=18, font_size="16sp",
+                             bold=True, size_hint_x=None, width=dp(40))
+        b_del.bind(on_release=lambda w: self.borrar_recordatorio(indice))
+        tarjeta.add_widget(b_del)
+        return tarjeta
+
+    def agregar_recordatorio(self):
+        texto = self.aviso_entrada.text.strip()
+        if not texto:
+            return
+        dt = parsear_fecha_hora(texto)
+        self.recordatorios.append({
+            "texto": texto,
+            "cuando": dt.isoformat() if dt else "",
+            "avisado": False,
+        })
+        self.guardar_recordatorios()
+        self.aviso_entrada.text = ""
+        self.refrescar_avisos()
+
+    def borrar_recordatorio(self, indice):
+        if 0 <= indice < len(self.recordatorios):
+            self.recordatorios.pop(indice)
+            self.guardar_recordatorios()
+            self.refrescar_avisos()
+
+    def revisar_recordatorios(self, *args):
+        ahora = datetime.datetime.now()
+        cambio = False
+        for r in self.recordatorios:
+            if r.get("cuando") and not r.get("avisado"):
+                try:
+                    cuando = datetime.datetime.fromisoformat(r["cuando"])
+                except ValueError:
+                    continue
+                if cuando <= ahora:
+                    self.notificar(r.get("texto", "Recordatorio"))
+                    r["avisado"] = True
+                    cambio = True
+        if cambio:
+            self.guardar_recordatorios()
+            self.refrescar_avisos()
+
+    def notificar(self, texto):
+        try:
+            from plyer import notification
+            notification.notify(title="Recordatorio", message=texto, timeout=10)
+        except Exception:
+            contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
+            contenido.add_widget(Label(text=texto, color=TEXTO, font_size="16sp",
+                                       halign="center", valign="middle"))
+            b_ok = BotonRedondo(text="OK", color=ACCENT, radio=14,
+                                size_hint_y=None, height=dp(46))
+            contenido.add_widget(b_ok)
+            popup = Popup(title="Recordatorio", content=contenido, size_hint=(0.85, 0.4),
+                          title_color=TEXTO, separator_color=ACCENT)
+            b_ok.bind(on_release=lambda w: popup.dismiss())
+            popup.open()
+
     # ================= SECCION DIBUJO =================
     def construir_dibujo(self):
         self.titulo.text = "[b]Dibujo y bocetos[/b]"
-
-        # Fila 1: colores + borrador
         barra1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(6))
         for col in DIBUJO_COLORES:
             b = BotonRedondo(color=col, radio=12, size_hint_x=None, width=dp(40))
@@ -578,7 +906,6 @@ class AppNotas(App):
         barra1.add_widget(borrador)
         self.contenido.add_widget(barra1)
 
-        # Fila 2: grosores + limpiar + guardar
         barra2 = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
         for nombre, g in [("Fino", 2), ("Medio", 5), ("Grueso", 10)]:
             b = BotonRedondo(text=nombre, color=ACCENT, radio=12, font_size="13sp", bold=True)
@@ -592,7 +919,6 @@ class AppNotas(App):
         barra2.add_widget(guardar)
         self.contenido.add_widget(barra2)
 
-        # El lienzo se crea una sola vez para no perder el dibujo al cambiar de seccion
         if self.lienzo is None:
             self.lienzo = Lienzo()
         marco = Tarjeta(color=CARD, radio=16, padding=dp(4))
@@ -614,7 +940,7 @@ class AppNotas(App):
         self.lienzo.export_to_png(ruta)
         contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
         contenido.add_widget(Label(text="Dibujo guardado en:\n" + ruta, color=TEXTO,
-                                   font_size="14sp", halign="center", valign="middle"))
+                                   font_size="13sp", halign="center", valign="middle"))
         b_ok = BotonRedondo(text="OK", color=ACCENT, radio=14, size_hint_y=None, height=dp(46))
         contenido.add_widget(b_ok)
         popup = Popup(title="Guardado", content=contenido, size_hint=(0.85, 0.4),
