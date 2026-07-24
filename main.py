@@ -94,6 +94,11 @@ def formatear_cuando(dt):
     return f"{DIAS_CORTO[dt.weekday()]} {dt.day} {MESES[dt.month - 1]}, {dt.hour:02d}:{dt.minute:02d}"
 
 
+def escapar_markup(t):
+    """Evita que corchetes del texto rompan el formato con markup."""
+    return t.replace("&", "&amp;").replace("[", "&bl;").replace("]", "&br;")
+
+
 def parsear_fecha_hora(texto):
     """Detecta una fecha y hora dentro de un texto en espanol.
     Devuelve un datetime, o None si no encuentra nada."""
@@ -259,6 +264,12 @@ class Lienzo(Widget):
 class AppNotas(App):
     def build(self):
         self.title = "Mi Cuaderno"
+        # El teclado empuja la vista en vez de tapar el campo de texto
+        Window.softinput_mode = "below_target"
+        # En el computador, ventana con forma de celular para probar comodo
+        from kivy.utils import platform
+        if platform != "android":
+            Window.size = (400, 720)
         d = self.user_data_dir
         self.archivo = os.path.join(d, "notas.json")
         self.archivo_tareas = os.path.join(d, "tareas.json")
@@ -680,7 +691,7 @@ class AppNotas(App):
         tarjeta.add_widget(casilla)
         texto = tarea.get("texto", "")
         if hecha:
-            etiqueta = Label(text="[s]" + texto + "[/s]", markup=True, halign="left",
+            etiqueta = Label(text="[s]" + escapar_markup(texto) + "[/s]", markup=True, halign="left",
                              valign="middle", font_size="17sp", color=TEXTO_TENUE)
         else:
             etiqueta = Label(text=texto, halign="left", valign="middle",

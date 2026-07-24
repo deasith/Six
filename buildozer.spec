@@ -1,7 +1,7 @@
 [app]
 
 # Nombre que se vera en la tablet
-title = Mis Notas
+title = Mi Cuaderno
 
 # Nombre interno (sin espacios ni acentos)
 package.name = misnotas
@@ -15,6 +15,10 @@ source.include_exts = py,png,jpg,kv,atlas,json
 
 # Version de tu app
 version = 1.0
+
+# Icono de la app y pantalla de carga
+icon.filename = %(source.dir)s/icon.png
+presplash.filename = %(source.dir)s/presplash.png
 
 # Librerias de Python que necesita la app
 requirements = python3,kivy,plyer
@@ -31,6 +35,12 @@ orientation = portrait
 
 # Pantalla completa: 0 = no (se ve la barra de arriba), 1 = si
 fullscreen = 0
+
+# Procesadores de Android a soportar (cubre practicamente todas las tablets)
+android.archs = arm64-v8a, armeabi-v7a
+
+# Acepta automaticamente las licencias del SDK de Android (evita que se cuelgue)
+android.accept_sdk_license = True
 
 [buildozer]
 
