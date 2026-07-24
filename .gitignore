@@ -1,0 +1,6 @@
+# Archivos temporales de Python
+__pycache__/
+*.pyc
+
+# Archivo de datos de la app (notas personales del usuario)
+notas.json
