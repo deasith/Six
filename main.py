@@ -34,6 +34,8 @@ from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.image import Image
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
@@ -266,10 +268,13 @@ class AppNotas(App):
         self.tareas = self.cargar_json(self.archivo_tareas, self.normalizar_tarea)
         self.recordatorios = self.cargar_json(self.archivo_recordatorios, self.normalizar_recordatorio)
         self.config_app = self.cargar_config()
+        self.dir_dibujos = os.path.join(d, "dibujos")
+        os.makedirs(self.dir_dibujos, exist_ok=True)
         self.filtro = ""
         self.lienzo = None
         self.seccion = "notas"
         self.vista_tareas = "lista"
+        self.vista_dibujo = "lienzo"
 
         self.aplicar_fondo()
 
@@ -909,6 +914,25 @@ class AppNotas(App):
     # ================= SECCION DIBUJO =================
     def construir_dibujo(self):
         self.titulo.text = "[b]Dibujo y bocetos[/b]"
+        fila_vista = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(8))
+        fila_vista.add_widget(Widget())
+        texto_vista = "Ver: Lienzo" if self.vista_dibujo == "lienzo" else "Ver: Galeria"
+        b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=12,
+                               font_size="13sp", bold=True, size_hint_x=None, width=dp(150))
+        b_vista.bind(on_release=lambda w: self.alternar_vista_dibujo())
+        fila_vista.add_widget(b_vista)
+        self.contenido.add_widget(fila_vista)
+
+        if self.vista_dibujo == "lienzo":
+            self.construir_lienzo()
+        else:
+            self.construir_galeria()
+
+    def alternar_vista_dibujo(self):
+        self.vista_dibujo = "galeria" if self.vista_dibujo == "lienzo" else "lienzo"
+        self.mostrar_seccion("dibujo")
+
+    def construir_lienzo(self):
         barra1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(6))
         for col in DIBUJO_COLORES:
             b = BotonRedondo(color=col, radio=12, size_hint_x=None, width=dp(40))
@@ -950,16 +974,108 @@ class AppNotas(App):
     def guardar_dibujo(self):
         if not self.lienzo:
             return
-        ruta = os.path.join(self.user_data_dir, "dibujo.png")
+        nombre = "dibujo_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".png"
+        ruta = os.path.join(self.dir_dibujos, nombre)
         self.lienzo.export_to_png(ruta)
+        self.lienzo.limpiar()   # empieza un lienzo nuevo en blanco
         contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
-        contenido.add_widget(Label(text="Dibujo guardado en:\n" + ruta, color=TEXTO,
-                                   font_size="13sp", halign="center", valign="middle"))
+        contenido.add_widget(Label(text="Dibujo guardado en la galeria.\nEl lienzo esta listo para uno nuevo.",
+                                   color=TEXTO, font_size="15sp", halign="center", valign="middle"))
         b_ok = BotonRedondo(text="OK", color=ACCENT, radio=14, size_hint_y=None, height=dp(46))
         contenido.add_widget(b_ok)
         popup = Popup(title="Guardado", content=contenido, size_hint=(0.85, 0.4),
                       title_color=TEXTO, separator_color=VERDE)
         b_ok.bind(on_release=lambda w: popup.dismiss())
+        popup.open()
+
+    # ---- Galeria de dibujos ----
+    def listar_dibujos(self):
+        try:
+            archivos = [f for f in os.listdir(self.dir_dibujos) if f.endswith(".png")]
+        except OSError:
+            return []
+        archivos.sort(reverse=True)   # mas nuevos primero
+        return [os.path.join(self.dir_dibujos, f) for f in archivos]
+
+    def etiqueta_dibujo(self, ruta):
+        m = re.search(r"(\d{8})_(\d{6})", os.path.basename(ruta))
+        if m:
+            try:
+                dt = datetime.datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+                return formatear_cuando(dt)
+            except ValueError:
+                pass
+        return os.path.basename(ruta)
+
+    def construir_galeria(self):
+        archivos = self.listar_dibujos()
+        if not archivos:
+            caja = BoxLayout()
+            self._mensaje(caja, "Aun no has guardado dibujos.\nDibuja y pulsa Guardar.")
+            self.contenido.add_widget(caja)
+            return
+        scroll = ScrollView()
+        grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(10), padding=(0, dp(4)))
+        grid.bind(minimum_height=grid.setter("height"))
+        for ruta in archivos:
+            grid.add_widget(self.crear_miniatura(ruta))
+        scroll.add_widget(grid)
+        self.contenido.add_widget(scroll)
+
+    def crear_miniatura(self, ruta):
+        card = Tarjeta(color=CARD, radio=14, orientation="vertical",
+                       size_hint_y=None, height=dp(190), padding=dp(6), spacing=dp(4))
+        img = Image(source=ruta, allow_stretch=True, keep_ratio=True)
+        card.add_widget(img)
+        fila = BoxLayout(size_hint_y=None, height=dp(30), spacing=dp(6))
+        fecha = Label(text=self.etiqueta_dibujo(ruta), color=TEXTO_TENUE,
+                      font_size="11sp", halign="left", valign="middle")
+        fecha.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        fila.add_widget(fecha)
+        b_ver = BotonRedondo(text="Ver", color=ACCENT, radio=8, font_size="12sp",
+                             bold=True, size_hint_x=None, width=dp(48))
+        b_ver.bind(on_release=lambda w: self.ver_dibujo(ruta))
+        fila.add_widget(b_ver)
+        b_del = BotonRedondo(text="X", color=BORRAR, radio=8, font_size="12sp",
+                             bold=True, size_hint_x=None, width=dp(34))
+        b_del.bind(on_release=lambda w: self.borrar_dibujo(ruta))
+        fila.add_widget(b_del)
+        card.add_widget(fila)
+        return card
+
+    def ver_dibujo(self, ruta):
+        contenido = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
+        contenido.add_widget(Image(source=ruta, allow_stretch=True, keep_ratio=True))
+        b_ok = BotonRedondo(text="Cerrar", color=ACCENT, radio=14,
+                            size_hint_y=None, height=dp(46))
+        contenido.add_widget(b_ok)
+        popup = Popup(title=self.etiqueta_dibujo(ruta), content=contenido,
+                      size_hint=(0.95, 0.9), title_color=TEXTO, separator_color=ACCENT)
+        b_ok.bind(on_release=lambda w: popup.dismiss())
+        popup.open()
+
+    def borrar_dibujo(self, ruta):
+        contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(14))
+        contenido.add_widget(Label(text="¿Borrar este dibujo?", color=TEXTO,
+                                   font_size="16sp", halign="center", valign="middle"))
+        botones = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        b_no = BotonRedondo(text="No", color=CARD_BORDE, texto_color=TEXTO, radio=14)
+        b_si = BotonRedondo(text="Si, borrar", color=BORRAR, radio=14, bold=True)
+        botones.add_widget(b_no)
+        botones.add_widget(b_si)
+        contenido.add_widget(botones)
+        popup = Popup(title="Borrar dibujo", content=contenido, size_hint=(0.85, 0.4),
+                      title_color=TEXTO, separator_color=BORRAR)
+        b_no.bind(on_release=lambda w: popup.dismiss())
+
+        def borrar(_):
+            try:
+                os.remove(ruta)
+            except OSError:
+                pass
+            popup.dismiss()
+            self.mostrar_seccion("dibujo")
+        b_si.bind(on_release=borrar)
         popup.open()
 
 
