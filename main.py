@@ -302,11 +302,25 @@ class AppNotas(App):
         self.contenido = BoxLayout(orientation="vertical", spacing=dp(10))
         raiz.add_widget(self.contenido)
 
-        # Revisa los recordatorios cada 20 segundos
+        # Revisa los recordatorios cada 20 segundos (con la app abierta)
         Clock.schedule_interval(self.revisar_recordatorios, 20)
 
         self.mostrar_seccion("notas")
         return raiz
+
+    def on_start(self):
+        # Arranca el servicio en segundo plano (solo funciona en Android)
+        self.iniciar_servicio()
+
+    def iniciar_servicio(self):
+        try:
+            from jnius import autoclass
+            servicio = autoclass("org.misnotas.misnotas.ServiceRecordatorio")
+            actividad = autoclass("org.kivy.android.PythonActivity").mActivity
+            servicio.start(actividad, self.user_data_dir)
+        except Exception as e:
+            # En el computador no hay Android: se ignora sin problema
+            print("Servicio en segundo plano no disponible aqui:", e)
 
     # ---------- Cambio de seccion ----------
     def mostrar_seccion(self, nombre):

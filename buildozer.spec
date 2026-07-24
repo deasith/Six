@@ -19,8 +19,12 @@ version = 1.0
 # Librerias de Python que necesita la app
 requirements = python3,kivy,plyer
 
-# Permisos de Android (para poder mostrar notificaciones de recordatorios)
-android.permissions = POST_NOTIFICATIONS
+# Permisos de Android (notificaciones + servicio en segundo plano)
+android.permissions = POST_NOTIFICATIONS,FOREGROUND_SERVICE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED
+
+# Servicio en segundo plano que avisa aunque la app este cerrada.
+# Formato:  NombreDelServicio:archivo.py:tipo
+services = Recordatorio:service.py:foreground
 
 # La app se ve en vertical (como celular). Usa 'all' si quieres que rote.
 orientation = portrait
