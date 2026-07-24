@@ -23,12 +23,15 @@ presplash.filename = %(source.dir)s/presplash.png
 # Librerias de Python que necesita la app
 requirements = python3,kivy,plyer
 
-# Permisos de Android (notificaciones + servicio en segundo plano)
-android.permissions = POST_NOTIFICATIONS,FOREGROUND_SERVICE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED
+# Permisos de Android (por ahora solo notificaciones)
+android.permissions = POST_NOTIFICATIONS
 
-# Servicio en segundo plano que avisa aunque la app este cerrada.
-# Formato:  NombreDelServicio:archivo.py:tipo
-services = Recordatorio:service.py:foreground
+# --- SERVICIO EN SEGUNDO PLANO (desactivado en esta version sencilla) ---
+# Cuando el .apk sencillo funcione en la tablet, quitamos el '#' de las 2
+# lineas siguientes y volvemos a compilar para tener las notificaciones
+# aunque la app este cerrada.
+# android.permissions = POST_NOTIFICATIONS,FOREGROUND_SERVICE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED
+# services = Recordatorio:service.py:foreground
 
 # En tablet conviene que gire: se adapta si la sostienes vertical u horizontal
 orientation = all
