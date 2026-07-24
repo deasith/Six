@@ -30,8 +30,8 @@ android.permissions = POST_NOTIFICATIONS,FOREGROUND_SERVICE,WAKE_LOCK,RECEIVE_BO
 # Formato:  NombreDelServicio:archivo.py:tipo
 services = Recordatorio:service.py:foreground
 
-# La app se ve en vertical (como celular). Usa 'all' si quieres que rote.
-orientation = portrait
+# En tablet conviene que gire: se adapta si la sostienes vertical u horizontal
+orientation = all
 
 # Pantalla completa: 0 = no (se ve la barra de arriba), 1 = si
 fullscreen = 0
