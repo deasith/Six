@@ -959,6 +959,9 @@ class AppNotas(App):
 
         if self.lienzo is None:
             self.lienzo = Lienzo()
+        elif self.lienzo.parent is not None:
+            # lo soltamos del sitio anterior antes de volver a colocarlo
+            self.lienzo.parent.remove_widget(self.lienzo)
         marco = Tarjeta(color=CARD, radio=16, padding=dp(4))
         marco.add_widget(self.lienzo)
         self.contenido.add_widget(marco)
