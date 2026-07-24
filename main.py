@@ -1,6 +1,6 @@
 """
 App de Notas para tablet/celular Android - hecha con Python y Kivy.
-Version bonita con fecha/hora en cada nota y contador de notas.
+Version con: colores bonitos, fecha/hora, contador, buscador y editar notas.
 
 Este es el archivo principal que Buildozer usa para crear el .apk.
 Se llama 'main.py' obligatoriamente.
@@ -20,6 +20,7 @@ from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
@@ -39,7 +40,6 @@ Window.clearcolor = FONDO
 
 
 def fecha_ahora():
-    """Devuelve la fecha y hora actual en texto, por ejemplo '24 jul 2026, 15:30'."""
     ahora = datetime.datetime.now()
     return f"{ahora.day} {MESES[ahora.month - 1]} {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}"
 
@@ -88,8 +88,9 @@ class AppNotas(App):
         self.title = "Mis Notas"
         self.archivo = os.path.join(self.user_data_dir, "notas.json")
         self.notas = self.cargar_notas()
+        self.filtro = ""   # texto del buscador
 
-        raiz = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(14))
+        raiz = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
 
         # ---- Cabecera con titulo y contador de notas ----
         cabecera = Tarjeta(color=CABECERA, radio=22, size_hint_y=None, height=dp(64))
@@ -123,6 +124,20 @@ class AppNotas(App):
         fila.add_widget(boton_add)
         raiz.add_widget(fila)
 
+        # ---- Buscador ----
+        caja_buscar = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0),
+                              size_hint_y=None, height=dp(46))
+        self.buscador = TextInput(
+            hint_text="Buscar nota...", multiline=False,
+            font_size="15sp", background_normal="", background_active="",
+            background_color=(0, 0, 0, 0), foreground_color=TEXTO,
+            cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
+            padding=(0, dp(11)),
+        )
+        self.buscador.bind(text=lambda w, valor: self.actualizar_filtro(valor))
+        caja_buscar.add_widget(self.buscador)
+        raiz.add_widget(caja_buscar)
+
         # ---- Lista de notas con scroll ----
         scroll = ScrollView()
         self.lista = BoxLayout(
@@ -136,6 +151,7 @@ class AppNotas(App):
         self.refrescar_lista()
         return raiz
 
+    # ---------- Datos ----------
     def cargar_notas(self):
         if not os.path.exists(self.archivo):
             return []
@@ -144,7 +160,6 @@ class AppNotas(App):
                 datos = json.load(f)
         except (json.JSONDecodeError, OSError):
             return []
-        # Convierte notas antiguas (solo texto) al nuevo formato con fecha
         notas = []
         for nota in datos:
             if isinstance(nota, str):
@@ -157,8 +172,13 @@ class AppNotas(App):
         with open(self.archivo, "w", encoding="utf-8") as f:
             json.dump(self.notas, f, ensure_ascii=False, indent=2)
 
+    # ---------- Buscador ----------
+    def actualizar_filtro(self, texto):
+        self.filtro = texto.strip().lower()
+        self.refrescar_lista()
+
+    # ---------- Dibujar la lista ----------
     def refrescar_lista(self):
-        # Actualiza el contador de la cabecera
         cantidad = len(self.notas)
         etiqueta = "nota" if cantidad == 1 else "notas"
         self.titulo.text = (
@@ -167,20 +187,32 @@ class AppNotas(App):
         )
 
         self.lista.clear_widgets()
+
+        # Filtra segun lo escrito en el buscador
+        visibles = [
+            (i, n) for i, n in enumerate(self.notas)
+            if self.filtro in n.get("texto", "").lower()
+        ]
+
         if not self.notas:
-            self.lista.add_widget(Label(
-                text="Aun no tienes notas.\nEscribe una arriba y pulsa  +",
-                halign="center", valign="middle", size_hint_y=None, height=dp(90),
-                color=TEXTO_TENUE, font_size="16sp",
-            ))
+            self._mensaje("Aun no tienes notas.\nEscribe una arriba y pulsa  +")
             return
-        for indice, nota in enumerate(self.notas):
+        if not visibles:
+            self._mensaje("No se encontraron notas\ncon esa busqueda.")
+            return
+
+        for indice, nota in visibles:
             self.lista.add_widget(self.crear_tarjeta(indice, nota))
 
+    def _mensaje(self, texto):
+        self.lista.add_widget(Label(
+            text=texto, halign="center", valign="middle", size_hint_y=None,
+            height=dp(90), color=TEXTO_TENUE, font_size="16sp",
+        ))
+
     def crear_tarjeta(self, indice, nota):
-        """Tarjeta redondeada con el texto, la fecha debajo y un boton para borrar."""
         tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(76),
-                          padding=(dp(16), dp(8)), spacing=dp(8))
+                          padding=(dp(16), dp(8)), spacing=dp(6))
 
         # Columna con el texto arriba y la fecha abajo
         columna = BoxLayout(orientation="vertical", spacing=dp(2))
@@ -194,7 +226,7 @@ class AppNotas(App):
 
         fecha_texto = nota.get("fecha", "")
         etiqueta_fecha = Label(
-            text=("🕒 " + fecha_texto) if fecha_texto else "",
+            text=fecha_texto,
             halign="left", valign="middle", font_size="12sp",
             color=TEXTO_TENUE, size_hint_y=None, height=dp(18),
         )
@@ -203,14 +235,24 @@ class AppNotas(App):
 
         tarjeta.add_widget(columna)
 
+        # Boton editar (lapiz)
+        boton_editar = BotonRedondo(
+            text="E", color=ACCENT, radio=20, font_size="16sp", bold=True,
+            size_hint_x=None, width=dp(42),
+        )
+        boton_editar.bind(on_release=lambda w: self.editar_nota(indice))
+        tarjeta.add_widget(boton_editar)
+
+        # Boton borrar
         boton_borrar = BotonRedondo(
-            text="X", color=BORRAR, radio=22, font_size="18sp", bold=True,
-            size_hint_x=None, width=dp(44),
+            text="X", color=BORRAR, radio=20, font_size="18sp", bold=True,
+            size_hint_x=None, width=dp(42),
         )
         boton_borrar.bind(on_release=lambda w: self.borrar_nota(indice))
         tarjeta.add_widget(boton_borrar)
         return tarjeta
 
+    # ---------- Acciones ----------
     def agregar_nota(self):
         texto = self.entrada.text.strip()
         if texto:
@@ -224,6 +266,44 @@ class AppNotas(App):
             self.notas.pop(indice)
             self.guardar_notas()
             self.refrescar_lista()
+
+    def editar_nota(self, indice):
+        """Abre una ventanita para modificar el texto de la nota."""
+        if not (0 <= indice < len(self.notas)):
+            return
+
+        contenido = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(12))
+        entrada = TextInput(
+            text=self.notas[indice].get("texto", ""), multiline=True,
+            font_size="17sp",
+        )
+        contenido.add_widget(entrada)
+
+        botones = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        boton_cancelar = BotonRedondo(text="Cancelar", color=CARD, radio=14)
+        boton_guardar = BotonRedondo(text="Guardar", color=ACCENT, radio=14, bold=True)
+        botones.add_widget(boton_cancelar)
+        botones.add_widget(boton_guardar)
+        contenido.add_widget(botones)
+
+        popup = Popup(
+            title="Editar nota", content=contenido,
+            size_hint=(0.9, 0.5), title_color=TEXTO,
+            separator_color=ACCENT,
+        )
+
+        boton_cancelar.bind(on_release=lambda w: popup.dismiss())
+
+        def guardar(_):
+            nuevo = entrada.text.strip()
+            if nuevo:
+                self.notas[indice]["texto"] = nuevo
+                self.guardar_notas()
+                self.refrescar_lista()
+            popup.dismiss()
+
+        boton_guardar.bind(on_release=guardar)
+        popup.open()
 
 
 if __name__ == "__main__":
