@@ -1,6 +1,6 @@
 """
 App de Notas para tablet/celular Android - hecha con Python y Kivy.
-Version bonita: colores modernos, esquinas redondeadas y tarjetas.
+Version bonita con fecha/hora en cada nota y contador de notas.
 
 Este es el archivo principal que Buildozer usa para crear el .apk.
 Se llama 'main.py' obligatoriamente.
@@ -9,6 +9,7 @@ Como probarla en tu computador Linux:
     python3 main.py
 """
 
+import datetime
 import json
 import os
 
@@ -23,15 +24,24 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
 # ---- Paleta de colores (R, G, B, transparencia) de 0 a 1 ----
-FONDO       = (0.086, 0.075, 0.165, 1)   # morado muy oscuro
-CABECERA    = (0.427, 0.298, 0.855, 1)   # morado vibrante
-ACCENT      = (0.678, 0.361, 0.933, 1)   # morado-rosa (boton agregar)
-CARD        = (0.145, 0.129, 0.243, 1)   # tarjetas
-BORRAR      = (0.878, 0.353, 0.451, 1)   # rosa-rojo (boton borrar)
-TEXTO       = (0.93, 0.93, 0.97, 1)      # texto claro
-TEXTO_TENUE = (0.65, 0.62, 0.78, 1)      # texto secundario
+FONDO       = (0.086, 0.075, 0.165, 1)
+CABECERA    = (0.427, 0.298, 0.855, 1)
+ACCENT      = (0.678, 0.361, 0.933, 1)
+CARD        = (0.145, 0.129, 0.243, 1)
+BORRAR      = (0.878, 0.353, 0.451, 1)
+TEXTO       = (0.93, 0.93, 0.97, 1)
+TEXTO_TENUE = (0.65, 0.62, 0.78, 1)
+
+MESES = ["ene", "feb", "mar", "abr", "may", "jun",
+         "jul", "ago", "sep", "oct", "nov", "dic"]
 
 Window.clearcolor = FONDO
+
+
+def fecha_ahora():
+    """Devuelve la fecha y hora actual en texto, por ejemplo '24 jul 2026, 15:30'."""
+    ahora = datetime.datetime.now()
+    return f"{ahora.day} {MESES[ahora.month - 1]} {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}"
 
 
 class Tarjeta(BoxLayout):
@@ -56,7 +66,7 @@ class BotonRedondo(Button):
         super().__init__(**kwargs)
         self.background_normal = ""
         self.background_down = ""
-        self.background_color = (0, 0, 0, 0)   # transparente: dibujamos el nuestro
+        self.background_color = (0, 0, 0, 0)
         self._base = color
         with self.canvas.before:
             self._color = Color(*color)
@@ -68,7 +78,6 @@ class BotonRedondo(Button):
         self._rect.size = self.size
 
     def _al_pulsar(self, *args):
-        # Se oscurece un poquito al pulsarlo
         factor = 0.75 if self.state == "down" else 1.0
         self._color.rgba = (self._base[0] * factor, self._base[1] * factor,
                             self._base[2] * factor, 1)
@@ -82,12 +91,13 @@ class AppNotas(App):
 
         raiz = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(14))
 
-        # ---- Cabecera con color y titulo ----
+        # ---- Cabecera con titulo y contador de notas ----
         cabecera = Tarjeta(color=CABECERA, radio=22, size_hint_y=None, height=dp(64))
-        cabecera.add_widget(Label(
-            text="[b]  Mis Notas[/b]", markup=True, font_size="24sp",
-            color=(1, 1, 1, 1), halign="center", valign="middle",
-        ))
+        self.titulo = Label(
+            markup=True, font_size="24sp", color=(1, 1, 1, 1),
+            halign="center", valign="middle",
+        )
+        cabecera.add_widget(self.titulo)
         raiz.add_widget(cabecera)
 
         # ---- Fila para escribir una nota nueva ----
@@ -127,19 +137,35 @@ class AppNotas(App):
         return raiz
 
     def cargar_notas(self):
-        if os.path.exists(self.archivo):
-            try:
-                with open(self.archivo, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, OSError):
-                return []
-        return []
+        if not os.path.exists(self.archivo):
+            return []
+        try:
+            with open(self.archivo, "r", encoding="utf-8") as f:
+                datos = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return []
+        # Convierte notas antiguas (solo texto) al nuevo formato con fecha
+        notas = []
+        for nota in datos:
+            if isinstance(nota, str):
+                notas.append({"texto": nota, "fecha": ""})
+            else:
+                notas.append(nota)
+        return notas
 
     def guardar_notas(self):
         with open(self.archivo, "w", encoding="utf-8") as f:
             json.dump(self.notas, f, ensure_ascii=False, indent=2)
 
     def refrescar_lista(self):
+        # Actualiza el contador de la cabecera
+        cantidad = len(self.notas)
+        etiqueta = "nota" if cantidad == 1 else "notas"
+        self.titulo.text = (
+            f"[b]Mis Notas[/b]  "
+            f"[size=15sp][color=e0d4ff]({cantidad} {etiqueta})[/color][/size]"
+        )
+
         self.lista.clear_widgets()
         if not self.notas:
             self.lista.add_widget(Label(
@@ -151,17 +177,31 @@ class AppNotas(App):
         for indice, nota in enumerate(self.notas):
             self.lista.add_widget(self.crear_tarjeta(indice, nota))
 
-    def crear_tarjeta(self, indice, texto):
-        """Una tarjeta redondeada con el texto y un boton redondo para borrar."""
-        tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(62),
-                          padding=(dp(16), dp(6)), spacing=dp(8))
+    def crear_tarjeta(self, indice, nota):
+        """Tarjeta redondeada con el texto, la fecha debajo y un boton para borrar."""
+        tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(76),
+                          padding=(dp(16), dp(8)), spacing=dp(8))
+
+        # Columna con el texto arriba y la fecha abajo
+        columna = BoxLayout(orientation="vertical", spacing=dp(2))
 
         etiqueta = Label(
-            text=texto, halign="left", valign="middle", font_size="17sp",
-            color=TEXTO,
+            text=nota.get("texto", ""), halign="left", valign="middle",
+            font_size="17sp", color=TEXTO,
         )
         etiqueta.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
-        tarjeta.add_widget(etiqueta)
+        columna.add_widget(etiqueta)
+
+        fecha_texto = nota.get("fecha", "")
+        etiqueta_fecha = Label(
+            text=("🕒 " + fecha_texto) if fecha_texto else "",
+            halign="left", valign="middle", font_size="12sp",
+            color=TEXTO_TENUE, size_hint_y=None, height=dp(18),
+        )
+        etiqueta_fecha.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        columna.add_widget(etiqueta_fecha)
+
+        tarjeta.add_widget(columna)
 
         boton_borrar = BotonRedondo(
             text="X", color=BORRAR, radio=22, font_size="18sp", bold=True,
@@ -174,7 +214,7 @@ class AppNotas(App):
     def agregar_nota(self):
         texto = self.entrada.text.strip()
         if texto:
-            self.notas.append(texto)
+            self.notas.append({"texto": texto, "fecha": fecha_ahora()})
             self.guardar_notas()
             self.entrada.text = ""
             self.refrescar_lista()
