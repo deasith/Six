@@ -638,12 +638,11 @@ class AppNotas(App):
         fila.add_widget(boton)
         self.contenido.add_widget(fila)
 
-        # Boton para cambiar de vista (Lista <-> Tablero)
-        fila_vista = BoxLayout(size_hint_y=None, height=dp(38), spacing=dp(8))
-        fila_vista.add_widget(Widget())
-        texto_vista = "Ver: Lista" if self.vista_tareas == "lista" else "Ver: Tablero"
-        b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=12,
-                               font_size="13sp", bold=True, size_hint_x=None, width=dp(140))
+        # Boton para cambiar de vista (Lista <-> Tablero) - ancho completo
+        fila_vista = BoxLayout(size_hint_y=None, height=dp(46))
+        texto_vista = "Ver como Tablero" if self.vista_tareas == "lista" else "Ver como Lista"
+        b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=14,
+                               font_size="15sp", bold=True)
         b_vista.bind(on_release=lambda w: self.alternar_vista_tareas())
         fila_vista.add_widget(b_vista)
         self.contenido.add_widget(fila_vista)
@@ -681,25 +680,28 @@ class AppNotas(App):
 
     def crear_tarjeta_tarea(self, indice, tarea):
         hecha = tarea.get("estado") == 2
-        tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(58),
-                          padding=(dp(10), dp(6)), spacing=dp(8))
+        tarjeta = Tarjeta(color=CARD, radio=16, size_hint_y=None, height=dp(60),
+                          padding=(dp(8), dp(6)), spacing=dp(8))
+        # Casilla grande para marcar/desmarcar
         casilla = BotonRedondo(text=("v" if hecha else ""),
                                color=(VERDE if hecha else CARD_BORDE),
-                               texto_color=BLANCO, radio=10, font_size="18sp",
-                               bold=True, size_hint_x=None, width=dp(40))
+                               texto_color=BLANCO, radio=12, font_size="20sp",
+                               bold=True, size_hint_x=None, width=dp(52))
         casilla.bind(on_release=lambda w: self.alternar_tarea(indice))
         tarjeta.add_widget(casilla)
+        # El texto tambien es un boton grande: tocarlo marca/desmarca la tarea
         texto = tarea.get("texto", "")
-        if hecha:
-            etiqueta = Label(text="[s]" + escapar_markup(texto) + "[/s]", markup=True, halign="left",
-                             valign="middle", font_size="17sp", color=TEXTO_TENUE)
-        else:
-            etiqueta = Label(text=texto, halign="left", valign="middle",
-                             font_size="17sp", color=TEXTO)
-        etiqueta.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
-        tarjeta.add_widget(etiqueta)
-        b_del = BotonRedondo(text="X", color=BORRAR, radio=18, font_size="16sp",
-                             bold=True, size_hint_x=None, width=dp(40))
+        b_txt = BotonRedondo(color=CARD, texto_color=(TEXTO_TENUE if hecha else TEXTO),
+                             radio=12, font_size="17sp")
+        b_txt.markup = True
+        b_txt.halign = "left"
+        b_txt.valign = "middle"
+        b_txt.text = ("[s]" + escapar_markup(texto) + "[/s]") if hecha else escapar_markup(texto)
+        b_txt.bind(size=lambda w, *a: setattr(w, "text_size", (w.width - dp(14), w.height)))
+        b_txt.bind(on_release=lambda w: self.alternar_tarea(indice))
+        tarjeta.add_widget(b_txt)
+        b_del = BotonRedondo(text="X", color=BORRAR, radio=12, font_size="16sp",
+                             bold=True, size_hint_x=None, width=dp(46))
         b_del.bind(on_release=lambda w: self.borrar_tarea(indice))
         tarjeta.add_widget(b_del)
         return tarjeta
@@ -925,11 +927,10 @@ class AppNotas(App):
     # ================= SECCION DIBUJO =================
     def construir_dibujo(self):
         self.titulo.text = "[b]Dibujo y bocetos[/b]"
-        fila_vista = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(8))
-        fila_vista.add_widget(Widget())
-        texto_vista = "Ver: Lienzo" if self.vista_dibujo == "lienzo" else "Ver: Galeria"
-        b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=12,
-                               font_size="13sp", bold=True, size_hint_x=None, width=dp(150))
+        fila_vista = BoxLayout(size_hint_y=None, height=dp(46))
+        texto_vista = "Ver galeria" if self.vista_dibujo == "lienzo" else "Volver al lienzo"
+        b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=14,
+                               font_size="15sp", bold=True)
         b_vista.bind(on_release=lambda w: self.alternar_vista_dibujo())
         fila_vista.add_widget(b_vista)
         self.contenido.add_widget(fila_vista)
