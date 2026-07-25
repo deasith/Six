@@ -21,10 +21,10 @@ icon.filename = %(source.dir)s/icon.png
 presplash.filename = %(source.dir)s/presplash.png
 
 # Librerias de Python que necesita la app
-requirements = python3,kivy,plyer
+requirements = python3,kivy,plyer,certifi
 
-# Permisos de Android (por ahora solo notificaciones)
-android.permissions = POST_NOTIFICATIONS
+# Permisos de Android (notificaciones + internet para el asistente IA)
+android.permissions = POST_NOTIFICATIONS,INTERNET
 
 # --- SERVICIO EN SEGUNDO PLANO (desactivado en esta version sencilla) ---
 # Cuando el .apk sencillo funcione en la tablet, quitamos el '#' de las 2

@@ -24,6 +24,9 @@ import datetime
 import json
 import os
 import re
+import threading
+import urllib.request
+import urllib.error
 
 from kivy.config import Config
 Config.set("input", "mouse", "mouse,disable_multitouch")
@@ -353,9 +356,11 @@ class AppNotas(App):
         self.archivo_tareas = os.path.join(d, "tareas.json")
         self.archivo_recordatorios = os.path.join(d, "recordatorios.json")
         self.archivo_config = os.path.join(d, "config.json")
+        self.archivo_chat = os.path.join(d, "chat.json")
         self.notas = self.cargar_json(self.archivo, self.normalizar_nota)
         self.tareas = self.cargar_json(self.archivo_tareas, self.normalizar_tarea)
         self.recordatorios = self.cargar_json(self.archivo_recordatorios, self.normalizar_recordatorio)
+        self.chat = self.cargar_json(self.archivo_chat, self.normalizar_chat)
         self.config_app = self.cargar_config()
         self.dir_dibujos = os.path.join(d, "dibujos")
         os.makedirs(self.dir_dibujos, exist_ok=True)
@@ -366,6 +371,8 @@ class AppNotas(App):
         self.vista_tareas = "lista"
         self.vista_dibujo = "lienzo"
         self.vista_avisos = "lista"
+        self.ia_ocupada = False
+        self.chat_scroll = None
         hoy = datetime.datetime.now()
         self.cal_mes = hoy.month
         self.cal_anio = hoy.year
@@ -393,12 +400,13 @@ class AppNotas(App):
         cabecera.add_widget(boton_colores)
         self.raiz.add_widget(cabecera)
 
-        barra_nav = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
+        barra_nav = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(5))
         self.nav = {}
         for clave, texto in [("notas", "Notas"), ("tareas", "Tareas"),
-                             ("avisos", "Avisos"), ("dibujo", "Dibujo")]:
+                             ("avisos", "Avisos"), ("dibujo", "Dibujo"),
+                             ("ia", "IA")]:
             boton = BotonRedondo(text=texto, color=CARD_BORDE, texto_color=TEXTO,
-                                 radio=14, font_size="14sp", bold=True)
+                                 radio=14, font_size="12sp", bold=True)
             boton.bind(on_press=lambda w, c=clave: self.mostrar_seccion(c))
             self.nav[clave] = boton
             barra_nav.add_widget(boton)
@@ -444,6 +452,8 @@ class AppNotas(App):
             self.construir_avisos()
         elif nombre == "dibujo":
             self.construir_dibujo()
+        elif nombre == "ia":
+            self.construir_ia()
 
     # ---------- Colores (tema + fondo) ----------
     def aplicar_fondo(self):
@@ -525,6 +535,13 @@ class AppNotas(App):
         r.setdefault("avisado", False)
         return r
 
+    def normalizar_chat(self, m):
+        if not isinstance(m, dict):
+            m = {}
+        m.setdefault("role", "user")
+        m.setdefault("content", "")
+        return m
+
     def cargar_json(self, ruta, normalizar):
         if not os.path.exists(ruta):
             return []
@@ -547,6 +564,9 @@ class AppNotas(App):
 
     def guardar_recordatorios(self):
         self._guardar(self.archivo_recordatorios, self.recordatorios)
+
+    def guardar_chat(self):
+        self._guardar(self.archivo_chat, self.chat)
 
     def cargar_config(self):
         if os.path.exists(self.archivo_config):
@@ -816,11 +836,45 @@ class AppNotas(App):
         b_txt.bind(size=lambda w, *a: setattr(w, "text_size", (w.width - dp(14), w.height)))
         b_txt.bind(on_press=lambda w: self.alternar_tarea(indice))
         tarjeta.add_widget(b_txt)
+        b_edit = BotonRedondo(text="E", color=ACCENT, radio=12, font_size="15sp",
+                              bold=True, size_hint_x=None, width=dp(42))
+        b_edit.bind(on_release=lambda w: self.editar_tarea(indice))
+        tarjeta.add_widget(b_edit)
         b_del = BotonRedondo(text="X", color=BORRAR, radio=12, font_size="16sp",
-                             bold=True, size_hint_x=None, width=dp(46))
+                             bold=True, size_hint_x=None, width=dp(42))
         b_del.bind(on_press=lambda w: self.borrar_tarea(indice))
         tarjeta.add_widget(b_del)
         return tarjeta
+
+    def editar_tarea(self, indice):
+        if not (0 <= indice < len(self.tareas)):
+            return
+        cont = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(12))
+        entrada = TextInput(text=self.tareas[indice].get("texto", ""),
+                            multiline=True, font_size="17sp")
+        cont.add_widget(entrada)
+        botones = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        b_cancel = BotonRedondo(text="Cancelar", color=CARD_BORDE, texto_color=TEXTO, radio=14)
+        b_guardar = BotonRedondo(text="Guardar", color=ACCENT, radio=14, bold=True)
+        botones.add_widget(b_cancel)
+        botones.add_widget(b_guardar)
+        cont.add_widget(botones)
+        popup = Popup(title="Editar tarea", content=cont, size_hint=(0.9, 0.5),
+                      title_color=TEXTO, separator_color=ACCENT)
+        b_cancel.bind(on_press=lambda w: popup.dismiss())
+
+        def guardar(_):
+            nuevo = entrada.text.strip()
+            if nuevo:
+                self.tareas[indice]["texto"] = nuevo
+                self.guardar_tareas()
+                if self.vista_tareas == "lista":
+                    self.refrescar_tareas()
+                else:
+                    self.refrescar_tablero()
+            popup.dismiss()
+        b_guardar.bind(on_press=guardar)
+        popup.open()
 
     def alternar_tarea(self, indice):
         if 0 <= indice < len(self.tareas):
@@ -1376,6 +1430,182 @@ class AppNotas(App):
             self.mostrar_seccion("dibujo")
         b_si.bind(on_press=borrar)
         popup.open()
+
+    # ================= SECCION IA (asistente) =================
+    def construir_ia(self):
+        self.titulo.text = "[b]Asistente IA[/b]"
+
+        # Barra superior: estado de la clave + boton para configurarla
+        fila_top = BoxLayout(size_hint_y=None, height=dp(36), spacing=dp(8))
+        estado = "Clave lista" if self.config_app.get("api_key") else "Falta la clave API"
+        et = Label(text=estado, color=TEXTO_TENUE, font_size="12sp",
+                   halign="left", valign="middle")
+        et.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        fila_top.add_widget(et)
+        b_borrar = BotonRedondo(text="Limpiar", color=CARD_BORDE, texto_color=TEXTO,
+                                radio=12, font_size="12sp", bold=True,
+                                size_hint_x=None, width=dp(80))
+        b_borrar.bind(on_press=lambda w: self.limpiar_chat())
+        fila_top.add_widget(b_borrar)
+        b_clave = BotonRedondo(text="Clave API", color=CARD_BORDE, texto_color=TEXTO,
+                               radio=12, font_size="12sp", bold=True,
+                               size_hint_x=None, width=dp(100))
+        b_clave.bind(on_release=lambda w: self.config_clave())
+        fila_top.add_widget(b_clave)
+        self.contenido.add_widget(fila_top)
+
+        # Chat
+        self.chat_scroll = ScrollView()
+        self.chat_lista = BoxLayout(orientation="vertical", size_hint_y=None,
+                                    spacing=dp(8), padding=(0, dp(4)))
+        self.chat_lista.bind(minimum_height=self.chat_lista.setter("height"))
+        self.chat_scroll.add_widget(self.chat_lista)
+        self.contenido.add_widget(self.chat_scroll)
+
+        # Entrada + enviar
+        fila = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
+        caja = Tarjeta(color=CARD, radio=16, padding=(dp(14), 0))
+        self.ia_entrada = TextInput(
+            hint_text="Escribe tu pregunta...", multiline=False, font_size="16sp",
+            background_normal="", background_active="", background_color=(0, 0, 0, 0),
+            foreground_color=TEXTO, cursor_color=ACCENT, hint_text_color=TEXTO_TENUE,
+            padding=(0, dp(13)))
+        self.ia_entrada.bind(on_text_validate=lambda w: self.enviar_ia())
+        caja.add_widget(self.ia_entrada)
+        fila.add_widget(caja)
+        boton = BotonRedondo(text=">", color=ACCENT, radio=16, font_size="24sp",
+                             bold=True, size_hint_x=None, width=dp(56))
+        boton.bind(on_press=lambda w: self.enviar_ia())
+        fila.add_widget(boton)
+        self.contenido.add_widget(fila)
+
+        self.refrescar_chat()
+
+    def crear_burbuja(self, m):
+        es_usuario = m.get("role") == "user"
+        tarjeta = Tarjeta(color=(ACCENT if es_usuario else CARD), radio=14,
+                          orientation="vertical", size_hint_y=None, padding=dp(12))
+        tarjeta.bind(minimum_height=tarjeta.setter("height"))
+        lbl = Label(text=m.get("content", ""), color=(BLANCO if es_usuario else TEXTO),
+                    font_size="15sp", halign="left", valign="top", size_hint_y=None)
+        lbl.bind(width=lambda w, *a: setattr(w, "text_size", (w.width, None)),
+                 texture_size=lambda w, *a: setattr(w, "height", w.texture_size[1]))
+        tarjeta.add_widget(lbl)
+        return tarjeta
+
+    def refrescar_chat(self):
+        if self.seccion != "ia":
+            return
+        self.chat_lista.clear_widgets()
+        if not self.chat and not self.ia_ocupada:
+            self._mensaje(self.chat_lista, "Salúdame o pregúntame lo que quieras :)")
+        for m in self.chat:
+            if m.get("role") in ("user", "assistant"):
+                self.chat_lista.add_widget(self.crear_burbuja(m))
+        if self.ia_ocupada:
+            self.chat_lista.add_widget(self.crear_burbuja(
+                {"role": "assistant", "content": "Escribiendo..."}))
+        if self.chat_scroll is not None:
+            Clock.schedule_once(lambda dt: setattr(self.chat_scroll, "scroll_y", 0), 0)
+
+    def limpiar_chat(self):
+        self.chat = []
+        self.guardar_chat()
+        self.refrescar_chat()
+
+    def config_clave(self):
+        cont = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(10))
+        cont.add_widget(Label(text="Pega tu clave de API de Anthropic:", color=TEXTO,
+                              size_hint_y=None, height=dp(30), font_size="14sp"))
+        entrada = TextInput(text=self.config_app.get("api_key", ""), multiline=False,
+                            font_size="13sp", size_hint_y=None, height=dp(46))
+        cont.add_widget(entrada)
+        nota = Label(text="La obtienes gratis en console.anthropic.com. Se guarda solo "
+                          "en tu dispositivo.", color=TEXTO_TENUE, font_size="11sp",
+                     size_hint_y=None, height=dp(46))
+        nota.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
+        cont.add_widget(nota)
+        botones = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
+        b_cancel = BotonRedondo(text="Cancelar", color=CARD_BORDE, texto_color=TEXTO, radio=14)
+        b_guardar = BotonRedondo(text="Guardar", color=ACCENT, radio=14, bold=True)
+        botones.add_widget(b_cancel)
+        botones.add_widget(b_guardar)
+        cont.add_widget(botones)
+        popup = Popup(title="Clave API", content=cont, size_hint=(0.92, 0.55),
+                      title_color=TEXTO, separator_color=ACCENT)
+        b_cancel.bind(on_press=lambda w: popup.dismiss())
+
+        def guardar(_):
+            self.config_app["api_key"] = entrada.text.strip()
+            self.guardar_config()
+            popup.dismiss()
+            self.mostrar_seccion("ia")
+        b_guardar.bind(on_press=guardar)
+        popup.open()
+
+    def enviar_ia(self):
+        texto = self.ia_entrada.text.strip()
+        if not texto or self.ia_ocupada:
+            return
+        if not self.config_app.get("api_key"):
+            self.config_clave()
+            return
+        self.chat.append({"role": "user", "content": texto})
+        self.ia_entrada.text = ""
+        self.ia_ocupada = True
+        self.guardar_chat()
+        self.refrescar_chat()
+        threading.Thread(target=self._llamar_ia, daemon=True).start()
+
+    def _llamar_ia(self):
+        try:
+            respuesta = self._peticion_claude(self.chat)
+        except urllib.error.HTTPError as e:
+            try:
+                detalle = json.loads(e.read().decode("utf-8"))["error"]["message"]
+            except Exception:
+                detalle = str(e)
+            respuesta = "Ups, la IA respondio con un error:\n" + detalle
+        except Exception as e:
+            respuesta = "No pude conectar con la IA. Revisa tu internet.\n" + str(e)
+
+        def terminar(dt):
+            self.ia_ocupada = False
+            self.chat.append({"role": "assistant", "content": respuesta})
+            self.guardar_chat()
+            self.refrescar_chat()
+        Clock.schedule_once(terminar, 0)
+
+    def _peticion_claude(self, historial):
+        # Solo las ultimas 20 turnos, para no gastar de mas
+        mensajes = [{"role": m["role"], "content": m["content"]}
+                    for m in historial if m.get("role") in ("user", "assistant")][-20:]
+        cuerpo = {
+            "model": "claude-opus-5",
+            "max_tokens": 1024,
+            "thinking": {"type": "disabled"},
+            "system": ("Eres un asistente amable y util dentro de una app de notas "
+                       "llamada Mi Cuaderno. Responde en espanol, claro y breve."),
+            "messages": mensajes,
+        }
+        datos = json.dumps(cuerpo).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages", data=datos, method="POST",
+            headers={
+                "x-api-key": self.config_app.get("api_key", ""),
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            })
+        try:
+            import ssl
+            import certifi
+            contexto = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            contexto = None
+        with urllib.request.urlopen(req, timeout=60, context=contexto) as resp:
+            r = json.loads(resp.read().decode("utf-8"))
+        partes = [b.get("text", "") for b in r.get("content", []) if b.get("type") == "text"]
+        return "".join(partes).strip() or "(La IA no devolvio texto)"
 
 
 if __name__ == "__main__":
