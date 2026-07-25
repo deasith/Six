@@ -1515,13 +1515,14 @@ class AppNotas(App):
 
     def config_clave(self):
         cont = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(10))
-        cont.add_widget(Label(text="Pega tu clave de API de Google Gemini:", color=TEXTO,
+        cont.add_widget(Label(text="Pega tu clave de API de Groq:", color=TEXTO,
                               size_hint_y=None, height=dp(30), font_size="14sp"))
         entrada = TextInput(text=self.config_app.get("api_key", ""), multiline=False,
                             font_size="13sp", size_hint_y=None, height=dp(46))
         cont.add_widget(entrada)
-        nota = Label(text="Es gratis: entra a aistudio.google.com, crea una API key y "
-                          "pegala aqui. Se guarda solo en tu dispositivo.",
+        nota = Label(text="Es gratis y sin tarjeta: entra a console.groq.com, crea una "
+                          "API key (empieza con gsk_) y pegala aqui. Se guarda solo en "
+                          "tu dispositivo.",
                      color=TEXTO_TENUE, font_size="11sp",
                      size_hint_y=None, height=dp(60))
         nota.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
@@ -1578,24 +1579,24 @@ class AppNotas(App):
         Clock.schedule_once(terminar, 0)
 
     def _peticion_ia(self, historial):
-        # Usa Google Gemini (gratis). Solo los ultimos 20 turnos.
+        # Usa Groq (gratis, sin tarjeta). Solo los ultimos 20 turnos.
         turnos = [m for m in historial if m.get("role") in ("user", "assistant")][-20:]
-        contents = []
+        mensajes = [{"role": "system", "content":
+                     "Eres un asistente amable y util dentro de una app de notas "
+                     "llamada Mi Cuaderno. Responde en espanol, claro y breve."}]
         for m in turnos:
-            rol = "user" if m["role"] == "user" else "model"
-            contents.append({"role": rol, "parts": [{"text": m["content"]}]})
+            mensajes.append({"role": m["role"], "content": m["content"]})
         cuerpo = {
-            "system_instruction": {"parts": [{"text":
-                "Eres un asistente amable y util dentro de una app de notas "
-                "llamada Mi Cuaderno. Responde en espanol, claro y breve."}]},
-            "contents": contents,
+            "model": "llama-3.3-70b-versatile",
+            "messages": mensajes,
+            "max_tokens": 1024,
         }
         clave = self.config_app.get("api_key", "")
-        url = ("https://generativelanguage.googleapis.com/v1beta/models/"
-               "gemini-2.0-flash:generateContent?key=" + clave)
         datos = json.dumps(cuerpo).encode("utf-8")
-        req = urllib.request.Request(url, data=datos, method="POST",
-                                     headers={"content-type": "application/json"})
+        req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions", data=datos, method="POST",
+            headers={"Authorization": "Bearer " + clave,
+                     "content-type": "application/json"})
         try:
             import ssl
             import certifi
@@ -1604,11 +1605,10 @@ class AppNotas(App):
             contexto = None
         with urllib.request.urlopen(req, timeout=60, context=contexto) as resp:
             r = json.loads(resp.read().decode("utf-8"))
-        cands = r.get("candidates", [])
-        if not cands:
-            return "(La IA no devolvio respuesta. Intenta reformular tu pregunta.)"
-        partes = cands[0].get("content", {}).get("parts", [])
-        return "".join(p.get("text", "") for p in partes).strip() or "(sin texto)"
+        opciones = r.get("choices", [])
+        if not opciones:
+            return "(La IA no devolvio respuesta. Intenta de nuevo.)"
+        return opciones[0].get("message", {}).get("content", "").strip() or "(sin texto)"
 
 
 if __name__ == "__main__":
