@@ -300,7 +300,7 @@ class AppNotas(App):
         boton_fondo = BotonRedondo(text="Fondo", color=CARD, texto_color=CABECERA,
                                    radio=14, font_size="14sp", bold=True,
                                    size_hint_x=None, width=dp(70))
-        boton_fondo.bind(on_release=lambda w: self.elegir_fondo())
+        boton_fondo.bind(on_press=lambda w: self.elegir_fondo())
         cabecera.add_widget(boton_fondo)
         raiz.add_widget(cabecera)
 
@@ -310,7 +310,7 @@ class AppNotas(App):
                              ("avisos", "Avisos"), ("dibujo", "Dibujo")]:
             boton = BotonRedondo(text=texto, color=CARD_BORDE, texto_color=TEXTO,
                                  radio=14, font_size="14sp", bold=True)
-            boton.bind(on_release=lambda w, c=clave: self.mostrar_seccion(c))
+            boton.bind(on_press=lambda w, c=clave: self.mostrar_seccion(c))
             self.nav[clave] = boton
             barra_nav.add_widget(boton)
         raiz.add_widget(barra_nav)
@@ -370,7 +370,7 @@ class AppNotas(App):
                       title_color=TEXTO, separator_color=ACCENT)
         for idx, col in enumerate(FONDOS):
             swatch = BotonRedondo(color=col, radio=16)
-            swatch.bind(on_release=lambda w, i=idx: self._poner_fondo(i, popup))
+            swatch.bind(on_press=lambda w, i=idx: self._poner_fondo(i, popup))
             fila.add_widget(swatch)
         contenido.add_widget(fila)
         popup.content = contenido
@@ -463,7 +463,7 @@ class AppNotas(App):
         fila.add_widget(caja)
         boton = BotonRedondo(text="+", color=ACCENT, radio=16, font_size="28sp",
                              bold=True, size_hint_x=None, width=dp(56))
-        boton.bind(on_release=lambda w: self.agregar_nota())
+        boton.bind(on_press=lambda w: self.agregar_nota())
         fila.add_widget(boton)
         self.contenido.add_widget(fila)
 
@@ -529,15 +529,15 @@ class AppNotas(App):
                              texto_color=(BLANCO if es_fav else TEXTO_TENUE),
                              radio=20, font_size="22sp", bold=True,
                              size_hint_x=None, width=dp(40))
-        b_fav.bind(on_release=lambda w: self.alternar_favorito(indice))
+        b_fav.bind(on_press=lambda w: self.alternar_favorito(indice))
         tarjeta.add_widget(b_fav)
         b_edit = BotonRedondo(text="E", color=ACCENT, radio=20, font_size="16sp",
                               bold=True, size_hint_x=None, width=dp(40))
-        b_edit.bind(on_release=lambda w: self.editar_nota(indice))
+        b_edit.bind(on_press=lambda w: self.editar_nota(indice))
         tarjeta.add_widget(b_edit)
         b_del = BotonRedondo(text="X", color=BORRAR, radio=20, font_size="18sp",
                              bold=True, size_hint_x=None, width=dp(40))
-        b_del.bind(on_release=lambda w: self.confirmar_borrado(indice))
+        b_del.bind(on_press=lambda w: self.confirmar_borrado(indice))
         tarjeta.add_widget(b_del)
         return tarjeta
 
@@ -571,14 +571,14 @@ class AppNotas(App):
         contenido.add_widget(botones)
         popup = Popup(title="Borrar nota", content=contenido, size_hint=(0.85, 0.4),
                       title_color=TEXTO, separator_color=BORRAR)
-        b_no.bind(on_release=lambda w: popup.dismiss())
+        b_no.bind(on_press=lambda w: popup.dismiss())
 
         def borrar(_):
             self.notas.pop(indice)
             self.guardar_notas()
             self.refrescar_lista()
             popup.dismiss()
-        b_si.bind(on_release=borrar)
+        b_si.bind(on_press=borrar)
         popup.open()
 
     def editar_nota(self, indice):
@@ -596,7 +596,7 @@ class AppNotas(App):
             b = BotonRedondo(text=("-" if col is None else ""),
                              color=(col if col else CARD_BORDE),
                              texto_color=TEXTO, radio=14, bold=True)
-            b.bind(on_release=lambda w, i=idx: seleccion.update(color=i))
+            b.bind(on_press=lambda w, i=idx: seleccion.update(color=i))
             fila.add_widget(b)
         contenido.add_widget(fila)
         botones = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
@@ -607,7 +607,7 @@ class AppNotas(App):
         contenido.add_widget(botones)
         popup = Popup(title="Editar nota", content=contenido, size_hint=(0.9, 0.65),
                       title_color=TEXTO, separator_color=ACCENT)
-        b_cancel.bind(on_release=lambda w: popup.dismiss())
+        b_cancel.bind(on_press=lambda w: popup.dismiss())
 
         def guardar(_):
             nuevo = entrada.text.strip()
@@ -617,7 +617,7 @@ class AppNotas(App):
                 self.guardar_notas()
                 self.refrescar_lista()
             popup.dismiss()
-        b_guardar.bind(on_release=guardar)
+        b_guardar.bind(on_press=guardar)
         popup.open()
 
     # ================= SECCION TAREAS (lista + tablero) =================
@@ -634,7 +634,7 @@ class AppNotas(App):
         fila.add_widget(caja)
         boton = BotonRedondo(text="+", color=ACCENT, radio=16, font_size="28sp",
                              bold=True, size_hint_x=None, width=dp(56))
-        boton.bind(on_release=lambda w: self.agregar_tarea())
+        boton.bind(on_press=lambda w: self.agregar_tarea())
         fila.add_widget(boton)
         self.contenido.add_widget(fila)
 
@@ -643,7 +643,7 @@ class AppNotas(App):
         texto_vista = "Ver como Tablero" if self.vista_tareas == "lista" else "Ver como Lista"
         b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=14,
                                font_size="15sp", bold=True)
-        b_vista.bind(on_release=lambda w: self.alternar_vista_tareas())
+        b_vista.bind(on_press=lambda w: self.alternar_vista_tareas())
         fila_vista.add_widget(b_vista)
         self.contenido.add_widget(fila_vista)
 
@@ -687,7 +687,7 @@ class AppNotas(App):
                                color=(VERDE if hecha else CARD_BORDE),
                                texto_color=BLANCO, radio=12, font_size="20sp",
                                bold=True, size_hint_x=None, width=dp(52))
-        casilla.bind(on_release=lambda w: self.alternar_tarea(indice))
+        casilla.bind(on_press=lambda w: self.alternar_tarea(indice))
         tarjeta.add_widget(casilla)
         # El texto tambien es un boton grande: tocarlo marca/desmarca la tarea
         texto = tarea.get("texto", "")
@@ -698,11 +698,11 @@ class AppNotas(App):
         b_txt.valign = "middle"
         b_txt.text = ("[s]" + escapar_markup(texto) + "[/s]") if hecha else escapar_markup(texto)
         b_txt.bind(size=lambda w, *a: setattr(w, "text_size", (w.width - dp(14), w.height)))
-        b_txt.bind(on_release=lambda w: self.alternar_tarea(indice))
+        b_txt.bind(on_press=lambda w: self.alternar_tarea(indice))
         tarjeta.add_widget(b_txt)
         b_del = BotonRedondo(text="X", color=BORRAR, radio=12, font_size="16sp",
                              bold=True, size_hint_x=None, width=dp(46))
-        b_del.bind(on_release=lambda w: self.borrar_tarea(indice))
+        b_del.bind(on_press=lambda w: self.borrar_tarea(indice))
         tarjeta.add_widget(b_del)
         return tarjeta
 
@@ -763,14 +763,14 @@ class AppNotas(App):
         b_izq = BotonRedondo(text="<", color=(ACCENT if estado > 0 else CARD),
                              texto_color=(BLANCO if estado > 0 else TEXTO_TENUE),
                              radio=8, font_size="15sp", bold=True)
-        b_izq.bind(on_release=lambda w: self.mover_tarea(indice, -1))
+        b_izq.bind(on_press=lambda w: self.mover_tarea(indice, -1))
         b_der = BotonRedondo(text=">", color=(ACCENT if estado < 2 else CARD),
                              texto_color=(BLANCO if estado < 2 else TEXTO_TENUE),
                              radio=8, font_size="15sp", bold=True)
-        b_der.bind(on_release=lambda w: self.mover_tarea(indice, 1))
+        b_der.bind(on_press=lambda w: self.mover_tarea(indice, 1))
         b_del = BotonRedondo(text="X", color=BORRAR, radio=8, font_size="12sp",
                              bold=True, size_hint_x=None, width=dp(32))
-        b_del.bind(on_release=lambda w: self.borrar_tarea_tablero(indice))
+        b_del.bind(on_press=lambda w: self.borrar_tarea_tablero(indice))
         botones.add_widget(b_izq)
         botones.add_widget(b_der)
         botones.add_widget(b_del)
@@ -816,7 +816,7 @@ class AppNotas(App):
         fila.add_widget(caja)
         boton = BotonRedondo(text="+", color=ACCENT, radio=16, font_size="28sp",
                              bold=True, size_hint_x=None, width=dp(56))
-        boton.bind(on_release=lambda w: self.agregar_recordatorio())
+        boton.bind(on_press=lambda w: self.agregar_recordatorio())
         fila.add_widget(boton)
         self.contenido.add_widget(fila)
 
@@ -867,7 +867,7 @@ class AppNotas(App):
         tarjeta.add_widget(columna)
         b_del = BotonRedondo(text="X", color=BORRAR, radio=18, font_size="16sp",
                              bold=True, size_hint_x=None, width=dp(40))
-        b_del.bind(on_release=lambda w: self.borrar_recordatorio(indice))
+        b_del.bind(on_press=lambda w: self.borrar_recordatorio(indice))
         tarjeta.add_widget(b_del)
         return tarjeta
 
@@ -921,7 +921,7 @@ class AppNotas(App):
             contenido.add_widget(b_ok)
             popup = Popup(title="Recordatorio", content=contenido, size_hint=(0.85, 0.4),
                           title_color=TEXTO, separator_color=ACCENT)
-            b_ok.bind(on_release=lambda w: popup.dismiss())
+            b_ok.bind(on_press=lambda w: popup.dismiss())
             popup.open()
 
     # ================= SECCION DIBUJO =================
@@ -931,7 +931,7 @@ class AppNotas(App):
         texto_vista = "Ver galeria" if self.vista_dibujo == "lienzo" else "Volver al lienzo"
         b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=14,
                                font_size="15sp", bold=True)
-        b_vista.bind(on_release=lambda w: self.alternar_vista_dibujo())
+        b_vista.bind(on_press=lambda w: self.alternar_vista_dibujo())
         fila_vista.add_widget(b_vista)
         self.contenido.add_widget(fila_vista)
 
@@ -948,24 +948,24 @@ class AppNotas(App):
         barra1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(6))
         for col in DIBUJO_COLORES:
             b = BotonRedondo(color=col, radio=12, size_hint_x=None, width=dp(40))
-            b.bind(on_release=lambda w, c=col: self.set_color(c))
+            b.bind(on_press=lambda w, c=col: self.set_color(c))
             barra1.add_widget(b)
         borrador = BotonRedondo(text="Borrador", color=CARD_BORDE, texto_color=TEXTO,
                                 radio=12, font_size="12sp", bold=True)
-        borrador.bind(on_release=lambda w: self.set_color((1, 1, 1, 1)))
+        borrador.bind(on_press=lambda w: self.set_color((1, 1, 1, 1)))
         barra1.add_widget(borrador)
         self.contenido.add_widget(barra1)
 
         barra2 = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
         for nombre, g in [("Fino", 2), ("Medio", 5), ("Grueso", 10)]:
             b = BotonRedondo(text=nombre, color=ACCENT, radio=12, font_size="13sp", bold=True)
-            b.bind(on_release=lambda w, gg=g: self.set_grosor(gg))
+            b.bind(on_press=lambda w, gg=g: self.set_grosor(gg))
             barra2.add_widget(b)
         limpiar = BotonRedondo(text="Limpiar", color=BORRAR, radio=12, font_size="13sp", bold=True)
-        limpiar.bind(on_release=lambda w: self.lienzo.limpiar())
+        limpiar.bind(on_press=lambda w: self.lienzo.limpiar())
         barra2.add_widget(limpiar)
         guardar = BotonRedondo(text="Guardar", color=VERDE, radio=12, font_size="13sp", bold=True)
-        guardar.bind(on_release=lambda w: self.guardar_dibujo())
+        guardar.bind(on_press=lambda w: self.guardar_dibujo())
         barra2.add_widget(guardar)
         self.contenido.add_widget(barra2)
 
@@ -1000,7 +1000,7 @@ class AppNotas(App):
         contenido.add_widget(b_ok)
         popup = Popup(title="Guardado", content=contenido, size_hint=(0.85, 0.4),
                       title_color=TEXTO, separator_color=VERDE)
-        b_ok.bind(on_release=lambda w: popup.dismiss())
+        b_ok.bind(on_press=lambda w: popup.dismiss())
         popup.open()
 
     # ---- Galeria de dibujos ----
@@ -1049,11 +1049,11 @@ class AppNotas(App):
         fila.add_widget(fecha)
         b_ver = BotonRedondo(text="Ver", color=ACCENT, radio=8, font_size="12sp",
                              bold=True, size_hint_x=None, width=dp(48))
-        b_ver.bind(on_release=lambda w: self.ver_dibujo(ruta))
+        b_ver.bind(on_press=lambda w: self.ver_dibujo(ruta))
         fila.add_widget(b_ver)
         b_del = BotonRedondo(text="X", color=BORRAR, radio=8, font_size="12sp",
                              bold=True, size_hint_x=None, width=dp(34))
-        b_del.bind(on_release=lambda w: self.borrar_dibujo(ruta))
+        b_del.bind(on_press=lambda w: self.borrar_dibujo(ruta))
         fila.add_widget(b_del)
         card.add_widget(fila)
         return card
@@ -1066,7 +1066,7 @@ class AppNotas(App):
         contenido.add_widget(b_ok)
         popup = Popup(title=self.etiqueta_dibujo(ruta), content=contenido,
                       size_hint=(0.95, 0.9), title_color=TEXTO, separator_color=ACCENT)
-        b_ok.bind(on_release=lambda w: popup.dismiss())
+        b_ok.bind(on_press=lambda w: popup.dismiss())
         popup.open()
 
     def borrar_dibujo(self, ruta):
@@ -1081,7 +1081,7 @@ class AppNotas(App):
         contenido.add_widget(botones)
         popup = Popup(title="Borrar dibujo", content=contenido, size_hint=(0.85, 0.4),
                       title_color=TEXTO, separator_color=BORRAR)
-        b_no.bind(on_release=lambda w: popup.dismiss())
+        b_no.bind(on_press=lambda w: popup.dismiss())
 
         def borrar(_):
             try:
@@ -1090,7 +1090,7 @@ class AppNotas(App):
                 pass
             popup.dismiss()
             Clock.schedule_once(lambda dt: self.mostrar_seccion("dibujo"), 0)
-        b_si.bind(on_release=borrar)
+        b_si.bind(on_press=borrar)
         popup.open()
 
 
