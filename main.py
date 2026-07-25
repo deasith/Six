@@ -19,6 +19,7 @@ Como probarla en tu computador Linux:
     python3 main.py
 """
 
+import calendar
 import datetime
 import json
 import os
@@ -42,23 +43,78 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
-# ---- Paleta coquette (rosa pastel) ----
-CABECERA    = (0.93, 0.60, 0.70, 1)
-ACCENT      = (0.90, 0.52, 0.63, 1)
-CARD        = (1.00, 0.97, 0.98, 1)
-CARD_BORDE  = (0.94, 0.88, 0.91, 1)
-BORRAR      = (0.90, 0.45, 0.52, 1)
-VERDE       = (0.45, 0.78, 0.55, 1)
-AMARILLO    = (0.98, 0.75, 0.35, 1)
-TEXTO       = (0.38, 0.22, 0.28, 1)
-TEXTO_TENUE = (0.62, 0.48, 0.54, 1)
-ORO         = (0.95, 0.72, 0.35, 1)
-BLANCO      = (1, 1, 1, 1)
+# ---- Temas de colores (elegibles desde la app) ----
+# Cada tema define los colores principales y un fondo que combina.
+TEMAS = [
+    {"nombre": "Coquette",
+     "CABECERA": (0.93, 0.60, 0.70, 1), "ACCENT": (0.90, 0.52, 0.63, 1),
+     "CARD": (1.00, 0.97, 0.98, 1), "CARD_BORDE": (0.94, 0.88, 0.91, 1),
+     "BORRAR": (0.90, 0.45, 0.52, 1), "VERDE": (0.45, 0.78, 0.55, 1),
+     "TEXTO": (0.38, 0.22, 0.28, 1), "TEXTO_TENUE": (0.62, 0.48, 0.54, 1),
+     "FONDO": (0.99, 0.94, 0.95, 1)},
+    {"nombre": "Lavanda",
+     "CABECERA": (0.60, 0.53, 0.85, 1), "ACCENT": (0.55, 0.47, 0.82, 1),
+     "CARD": (0.99, 0.98, 1.00, 1), "CARD_BORDE": (0.90, 0.88, 0.96, 1),
+     "BORRAR": (0.85, 0.45, 0.60, 1), "VERDE": (0.45, 0.78, 0.60, 1),
+     "TEXTO": (0.28, 0.24, 0.40, 1), "TEXTO_TENUE": (0.52, 0.48, 0.66, 1),
+     "FONDO": (0.95, 0.94, 0.99, 1)},
+    {"nombre": "Menta",
+     "CABECERA": (0.35, 0.72, 0.62, 1), "ACCENT": (0.28, 0.66, 0.56, 1),
+     "CARD": (0.98, 1.00, 0.99, 1), "CARD_BORDE": (0.87, 0.95, 0.91, 1),
+     "BORRAR": (0.88, 0.45, 0.50, 1), "VERDE": (0.40, 0.75, 0.50, 1),
+     "TEXTO": (0.20, 0.36, 0.32, 1), "TEXTO_TENUE": (0.44, 0.60, 0.55, 1),
+     "FONDO": (0.93, 0.98, 0.96, 1)},
+    {"nombre": "Oceano",
+     "CABECERA": (0.35, 0.60, 0.88, 1), "ACCENT": (0.28, 0.53, 0.85, 1),
+     "CARD": (0.98, 0.99, 1.00, 1), "CARD_BORDE": (0.87, 0.92, 0.98, 1),
+     "BORRAR": (0.88, 0.45, 0.52, 1), "VERDE": (0.40, 0.75, 0.55, 1),
+     "TEXTO": (0.20, 0.30, 0.45, 1), "TEXTO_TENUE": (0.45, 0.55, 0.70, 1),
+     "FONDO": (0.93, 0.96, 0.99, 1)},
+    {"nombre": "Durazno",
+     "CABECERA": (0.96, 0.60, 0.45, 1), "ACCENT": (0.94, 0.54, 0.40, 1),
+     "CARD": (1.00, 0.98, 0.96, 1), "CARD_BORDE": (0.97, 0.90, 0.85, 1),
+     "BORRAR": (0.88, 0.42, 0.42, 1), "VERDE": (0.45, 0.75, 0.50, 1),
+     "TEXTO": (0.42, 0.26, 0.20, 1), "TEXTO_TENUE": (0.66, 0.50, 0.44, 1),
+     "FONDO": (1.00, 0.95, 0.90, 1)},
+    {"nombre": "Noche",
+     "CABECERA": (0.42, 0.35, 0.60, 1), "ACCENT": (0.58, 0.48, 0.85, 1),
+     "CARD": (0.20, 0.19, 0.28, 1), "CARD_BORDE": (0.30, 0.28, 0.40, 1),
+     "BORRAR": (0.82, 0.42, 0.50, 1), "VERDE": (0.40, 0.72, 0.52, 1),
+     "TEXTO": (0.92, 0.90, 0.97, 1), "TEXTO_TENUE": (0.66, 0.62, 0.78, 1),
+     "FONDO": (0.12, 0.11, 0.18, 1)},
+]
 
+# Fondos sueltos que se pueden elegir aparte del tema
 FONDOS = [
     (0.99, 0.94, 0.95, 1), (0.96, 0.93, 0.98, 1), (0.93, 0.97, 0.95, 1),
     (0.99, 0.97, 0.91, 1), (0.99, 0.94, 0.91, 1), (0.92, 0.96, 0.99, 1),
+    (0.15, 0.14, 0.20, 1),
 ]
+
+# Colores fijos (no cambian con el tema)
+AMARILLO = (0.98, 0.75, 0.35, 1)
+ORO      = (0.95, 0.72, 0.35, 1)
+BLANCO   = (1, 1, 1, 1)
+
+# Colores del tema actual (se rellenan con aplicar_tema)
+CABECERA = ACCENT = CARD = CARD_BORDE = BORRAR = VERDE = TEXTO = TEXTO_TENUE = (0, 0, 0, 1)
+
+
+def aplicar_tema(idx):
+    """Cambia los colores globales al tema elegido."""
+    global CABECERA, ACCENT, CARD, CARD_BORDE, BORRAR, VERDE, TEXTO, TEXTO_TENUE
+    t = TEMAS[idx % len(TEMAS)]
+    CABECERA = t["CABECERA"]
+    ACCENT = t["ACCENT"]
+    CARD = t["CARD"]
+    CARD_BORDE = t["CARD_BORDE"]
+    BORRAR = t["BORRAR"]
+    VERDE = t["VERDE"]
+    TEXTO = t["TEXTO"]
+    TEXTO_TENUE = t["TEXTO_TENUE"]
+
+
+aplicar_tema(0)   # tema por defecto (Coquette)
 
 COLORES = [
     None, (0.95, 0.45, 0.60, 1), (0.55, 0.70, 0.95, 1),
@@ -233,6 +289,7 @@ class Lienzo(Widget):
         super().__init__(**kwargs)
         self.color_lapiz = (0.20, 0.20, 0.25, 1)
         self.grosor = 3
+        self._img_rect = None
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self._fondo = Rectangle(pos=self.pos, size=self.size)
@@ -241,6 +298,24 @@ class Lienzo(Widget):
     def _actualizar(self, *args):
         self._fondo.pos = self.pos
         self._fondo.size = self.size
+        if self._img_rect is not None:
+            self._img_rect.pos = self.pos
+            self._img_rect.size = self.size
+
+    def cargar_imagen(self, ruta):
+        """Carga un dibujo guardado para seguir editandolo."""
+        from kivy.core.image import Image as CoreImage
+        self.canvas.clear()
+        if self._img_rect is not None:
+            self.canvas.before.remove(self._img_rect)
+            self._img_rect = None
+        try:
+            tex = CoreImage(ruta).texture
+        except Exception:
+            return
+        with self.canvas.before:
+            Color(1, 1, 1, 1)
+            self._img_rect = Rectangle(texture=tex, pos=self.pos, size=self.size)
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
@@ -259,6 +334,9 @@ class Lienzo(Widget):
 
     def limpiar(self):
         self.canvas.clear()
+        if self._img_rect is not None:
+            self.canvas.before.remove(self._img_rect)
+            self._img_rect = None
 
 
 class AppNotas(App):
@@ -281,28 +359,39 @@ class AppNotas(App):
         self.config_app = self.cargar_config()
         self.dir_dibujos = os.path.join(d, "dibujos")
         os.makedirs(self.dir_dibujos, exist_ok=True)
+        aplicar_tema(self.config_app.get("tema", 0))
         self.filtro = ""
         self.lienzo = None
         self.seccion = "notas"
         self.vista_tareas = "lista"
         self.vista_dibujo = "lienzo"
+        self.vista_avisos = "lista"
+        hoy = datetime.datetime.now()
+        self.cal_mes = hoy.month
+        self.cal_anio = hoy.year
 
         self.aplicar_fondo()
+        self.raiz = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(10))
+        self.montar_interfaz()
 
-        raiz = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(10))
+        # Revisa los recordatorios cada 20 segundos (con la app abierta)
+        Clock.schedule_interval(self.revisar_recordatorios, 20)
+        return self.raiz
 
+    def montar_interfaz(self):
+        self.raiz.clear_widgets()
         cabecera = Tarjeta(color=CABECERA, radio=22, size_hint_y=None, height=dp(58),
                            padding=(dp(14), 0), spacing=dp(8))
         self.titulo = Label(markup=True, font_size="21sp", color=BLANCO,
                             halign="left", valign="middle")
         self.titulo.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
         cabecera.add_widget(self.titulo)
-        boton_fondo = BotonRedondo(text="Fondo", color=CARD, texto_color=CABECERA,
-                                   radio=14, font_size="14sp", bold=True,
-                                   size_hint_x=None, width=dp(70))
-        boton_fondo.bind(on_press=lambda w: self.elegir_fondo())
-        cabecera.add_widget(boton_fondo)
-        raiz.add_widget(cabecera)
+        boton_colores = BotonRedondo(text="Colores", color=CARD, texto_color=CABECERA,
+                                     radio=14, font_size="13sp", bold=True,
+                                     size_hint_x=None, width=dp(86))
+        boton_colores.bind(on_release=lambda w: self.elegir_colores())
+        cabecera.add_widget(boton_colores)
+        self.raiz.add_widget(cabecera)
 
         barra_nav = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
         self.nav = {}
@@ -313,16 +402,16 @@ class AppNotas(App):
             boton.bind(on_press=lambda w, c=clave: self.mostrar_seccion(c))
             self.nav[clave] = boton
             barra_nav.add_widget(boton)
-        raiz.add_widget(barra_nav)
+        self.raiz.add_widget(barra_nav)
 
         self.contenido = BoxLayout(orientation="vertical", spacing=dp(10))
-        raiz.add_widget(self.contenido)
+        self.raiz.add_widget(self.contenido)
+        self.mostrar_seccion(self.seccion)
 
-        # Revisa los recordatorios cada 20 segundos (con la app abierta)
-        Clock.schedule_interval(self.revisar_recordatorios, 20)
-
-        self.mostrar_seccion("notas")
-        return raiz
+    def reconstruir(self):
+        # Rehace toda la interfaz (tras cambiar de tema)
+        self.aplicar_fondo()
+        self.montar_interfaz()
 
     def on_start(self):
         # Arranca el servicio en segundo plano (solo funciona en Android)
@@ -356,25 +445,52 @@ class AppNotas(App):
         elif nombre == "dibujo":
             self.construir_dibujo()
 
-    # ---------- Fondo ----------
+    # ---------- Colores (tema + fondo) ----------
     def aplicar_fondo(self):
-        idx = self.config_app.get("fondo", 0) % len(FONDOS)
-        Window.clearcolor = FONDOS[idx]
+        idx = self.config_app.get("fondo", -1)
+        if idx is None or idx < 0:
+            Window.clearcolor = TEMAS[self.config_app.get("tema", 0) % len(TEMAS)]["FONDO"]
+        else:
+            Window.clearcolor = FONDOS[idx % len(FONDOS)]
 
-    def elegir_fondo(self):
-        contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(14))
-        contenido.add_widget(Label(text="Elige un color de fondo:", color=TEXTO,
-                                   size_hint_y=None, height=dp(24), font_size="16sp"))
-        fila = BoxLayout(spacing=dp(10))
-        popup = Popup(title="Color de fondo", size_hint=(0.9, 0.4),
+    def elegir_colores(self):
+        cont = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(8))
+        popup = Popup(title="Colores de la app", size_hint=(0.92, 0.72),
                       title_color=TEXTO, separator_color=ACCENT)
-        for idx, col in enumerate(FONDOS):
-            swatch = BotonRedondo(color=col, radio=16)
-            swatch.bind(on_press=lambda w, i=idx: self._poner_fondo(i, popup))
-            fila.add_widget(swatch)
-        contenido.add_widget(fila)
-        popup.content = contenido
+
+        cont.add_widget(Label(text="Tema", color=TEXTO, size_hint_y=None,
+                              height=dp(22), font_size="15sp", bold=True))
+        grid_t = GridLayout(cols=3, size_hint_y=None, height=dp(100), spacing=dp(8))
+        for i, t in enumerate(TEMAS):
+            b = BotonRedondo(text=t["nombre"], color=t["ACCENT"], radio=12,
+                             font_size="12sp", bold=True)
+            b.bind(on_press=lambda w, idx=i: self._poner_tema(idx, popup))
+            grid_t.add_widget(b)
+        cont.add_widget(grid_t)
+
+        cont.add_widget(Label(text="Fondo", color=TEXTO, size_hint_y=None,
+                              height=dp(22), font_size="15sp", bold=True))
+        fila_f = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        for i, col in enumerate(FONDOS):
+            s = BotonRedondo(color=col, radio=14)
+            s.bind(on_press=lambda w, idx=i: self._poner_fondo(idx, popup))
+            fila_f.add_widget(s)
+        cont.add_widget(fila_f)
+
+        b_cerrar = BotonRedondo(text="Cerrar", color=ACCENT, radio=14,
+                                size_hint_y=None, height=dp(44))
+        b_cerrar.bind(on_press=lambda w: popup.dismiss())
+        cont.add_widget(b_cerrar)
+        popup.content = cont
         popup.open()
+
+    def _poner_tema(self, idx, popup):
+        self.config_app["tema"] = idx
+        self.config_app["fondo"] = -1   # usar el fondo que combina con el tema
+        aplicar_tema(idx)
+        self.guardar_config()
+        popup.dismiss()
+        self.reconstruir()
 
     def _poner_fondo(self, idx, popup):
         self.config_app["fondo"] = idx
@@ -439,7 +555,7 @@ class AppNotas(App):
                     return json.load(f)
             except (json.JSONDecodeError, OSError):
                 pass
-        return {"fondo": 0}
+        return {"tema": 0, "fondo": -1}
 
     def guardar_config(self):
         self._guardar(self.archivo_config, self.config_app)
@@ -533,11 +649,11 @@ class AppNotas(App):
         tarjeta.add_widget(b_fav)
         b_edit = BotonRedondo(text="E", color=ACCENT, radio=20, font_size="16sp",
                               bold=True, size_hint_x=None, width=dp(40))
-        b_edit.bind(on_press=lambda w: self.editar_nota(indice))
+        b_edit.bind(on_release=lambda w: self.editar_nota(indice))
         tarjeta.add_widget(b_edit)
         b_del = BotonRedondo(text="X", color=BORRAR, radio=20, font_size="18sp",
                              bold=True, size_hint_x=None, width=dp(40))
-        b_del.bind(on_press=lambda w: self.confirmar_borrado(indice))
+        b_del.bind(on_release=lambda w: self.confirmar_borrado(indice))
         tarjeta.add_widget(b_del)
         return tarjeta
 
@@ -824,16 +940,32 @@ class AppNotas(App):
                      color=TEXTO_TENUE, font_size="12sp", size_hint_y=None, height=dp(22))
         self.contenido.add_widget(info)
 
-        scroll = ScrollView()
-        self.avisos_lista = BoxLayout(orientation="vertical", size_hint_y=None,
-                                      spacing=dp(10), padding=(0, dp(4)))
-        self.avisos_lista.bind(minimum_height=self.avisos_lista.setter("height"))
-        scroll.add_widget(self.avisos_lista)
-        self.contenido.add_widget(scroll)
-        self.refrescar_avisos()
+        # Boton para cambiar de vista (Lista <-> Calendario)
+        fila_vista = BoxLayout(size_hint_y=None, height=dp(44))
+        texto_vista = "Ver calendario" if self.vista_avisos == "lista" else "Ver lista"
+        b_vista = BotonRedondo(text=texto_vista, color=CABECERA, radio=14,
+                               font_size="15sp", bold=True)
+        b_vista.bind(on_press=lambda w: self.alternar_vista_avisos())
+        fila_vista.add_widget(b_vista)
+        self.contenido.add_widget(fila_vista)
+
+        if self.vista_avisos == "lista":
+            scroll = ScrollView()
+            self.avisos_lista = BoxLayout(orientation="vertical", size_hint_y=None,
+                                          spacing=dp(10), padding=(0, dp(4)))
+            self.avisos_lista.bind(minimum_height=self.avisos_lista.setter("height"))
+            scroll.add_widget(self.avisos_lista)
+            self.contenido.add_widget(scroll)
+            self.refrescar_avisos()
+        else:
+            self.construir_calendario()
+
+    def alternar_vista_avisos(self):
+        self.vista_avisos = "calendario" if self.vista_avisos == "lista" else "lista"
+        self.mostrar_seccion("avisos")
 
     def refrescar_avisos(self):
-        if self.seccion != "avisos":
+        if self.seccion != "avisos" or self.vista_avisos != "lista":
             return
         self.avisos_lista.clear_widgets()
         if not self.recordatorios:
@@ -865,11 +997,152 @@ class AppNotas(App):
         sub.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
         columna.add_widget(sub)
         tarjeta.add_widget(columna)
+        b_edit = BotonRedondo(text="E", color=ACCENT, radio=18, font_size="15sp",
+                              bold=True, size_hint_x=None, width=dp(40))
+        b_edit.bind(on_release=lambda w: self.editar_recordatorio(indice))
+        tarjeta.add_widget(b_edit)
         b_del = BotonRedondo(text="X", color=BORRAR, radio=18, font_size="16sp",
                              bold=True, size_hint_x=None, width=dp(40))
         b_del.bind(on_press=lambda w: self.borrar_recordatorio(indice))
         tarjeta.add_widget(b_del)
         return tarjeta
+
+    def editar_recordatorio(self, indice):
+        if not (0 <= indice < len(self.recordatorios)):
+            return
+        cont = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(12))
+        cont.add_widget(Label(text="Edita el recordatorio (con dia y hora):",
+                              color=TEXTO, size_hint_y=None, height=dp(24), font_size="14sp"))
+        entrada = TextInput(text=self.recordatorios[indice].get("texto", ""),
+                            multiline=True, font_size="16sp")
+        cont.add_widget(entrada)
+        botones = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        b_cancel = BotonRedondo(text="Cancelar", color=CARD_BORDE, texto_color=TEXTO, radio=14)
+        b_guardar = BotonRedondo(text="Guardar", color=ACCENT, radio=14, bold=True)
+        botones.add_widget(b_cancel)
+        botones.add_widget(b_guardar)
+        cont.add_widget(botones)
+        popup = Popup(title="Editar recordatorio", content=cont, size_hint=(0.9, 0.55),
+                      title_color=TEXTO, separator_color=ACCENT)
+        b_cancel.bind(on_press=lambda w: popup.dismiss())
+
+        def guardar(_):
+            nuevo = entrada.text.strip()
+            if nuevo:
+                dt = parsear_fecha_hora(nuevo)
+                self.recordatorios[indice]["texto"] = nuevo
+                self.recordatorios[indice]["cuando"] = dt.isoformat() if dt else ""
+                self.recordatorios[indice]["avisado"] = False
+                self.guardar_recordatorios()
+                self.refrescar_avisos()
+            popup.dismiss()
+        b_guardar.bind(on_press=guardar)
+        popup.open()
+
+    # ---------- Vista Calendario ----------
+    def construir_calendario(self):
+        NOMBRES_MES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                       "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        # Barra de navegacion del mes
+        barra = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
+        b_prev = BotonRedondo(text="<", color=ACCENT, radio=12, bold=True,
+                              size_hint_x=None, width=dp(50))
+        b_prev.bind(on_press=lambda w: self.cambiar_mes(-1))
+        titulo_mes = BotonRedondo(text=f"{NOMBRES_MES[self.cal_mes]} {self.cal_anio}",
+                                  color=CABECERA, radio=12, bold=True, font_size="15sp")
+        b_next = BotonRedondo(text=">", color=ACCENT, radio=12, bold=True,
+                              size_hint_x=None, width=dp(50))
+        b_next.bind(on_press=lambda w: self.cambiar_mes(1))
+        barra.add_widget(b_prev)
+        barra.add_widget(titulo_mes)
+        barra.add_widget(b_next)
+        self.contenido.add_widget(barra)
+
+        # Encabezado de dias
+        cab = GridLayout(cols=7, size_hint_y=None, height=dp(22))
+        for d in ["L", "M", "X", "J", "V", "S", "D"]:
+            cab.add_widget(Label(text=d, color=TEXTO_TENUE, font_size="12sp", bold=True))
+        self.contenido.add_widget(cab)
+
+        # Dias con recordatorio (de este mes)
+        dias_con_aviso = {}
+        for r in self.recordatorios:
+            if r.get("cuando"):
+                try:
+                    dt = datetime.datetime.fromisoformat(r["cuando"])
+                    if dt.year == self.cal_anio and dt.month == self.cal_mes:
+                        dias_con_aviso.setdefault(dt.day, 0)
+                        dias_con_aviso[dt.day] += 1
+                except ValueError:
+                    pass
+
+        hoy = datetime.datetime.now()
+        grid = GridLayout(cols=7, spacing=dp(4))
+        for semana in calendar.Calendar().monthdayscalendar(self.cal_anio, self.cal_mes):
+            for dia in semana:
+                if dia == 0:
+                    grid.add_widget(Label(text=""))
+                    continue
+                tiene = dia in dias_con_aviso
+                es_hoy = (dia == hoy.day and self.cal_mes == hoy.month
+                          and self.cal_anio == hoy.year)
+                if tiene:
+                    color = ACCENT
+                elif es_hoy:
+                    color = CABECERA
+                else:
+                    color = CARD
+                celda = BotonRedondo(
+                    text=str(dia), color=color, radio=10,
+                    texto_color=(BLANCO if (tiene or es_hoy) else TEXTO),
+                    font_size="14sp", bold=tiene)
+                celda.bind(on_release=lambda w, d=dia: self.ver_dia(d))
+                grid.add_widget(celda)
+        self.contenido.add_widget(grid)
+
+    def cambiar_mes(self, delta):
+        mes = self.cal_mes + delta
+        anio = self.cal_anio
+        if mes < 1:
+            mes = 12
+            anio -= 1
+        elif mes > 12:
+            mes = 1
+            anio += 1
+        self.cal_mes = mes
+        self.cal_anio = anio
+        self.mostrar_seccion("avisos")
+
+    def ver_dia(self, dia):
+        fecha = datetime.date(self.cal_anio, self.cal_mes, dia)
+        deldia = []
+        for r in self.recordatorios:
+            if r.get("cuando"):
+                try:
+                    dt = datetime.datetime.fromisoformat(r["cuando"])
+                    if dt.date() == fecha:
+                        deldia.append((dt, r.get("texto", "")))
+                except ValueError:
+                    pass
+        deldia.sort()
+        cont = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(10))
+        titulo = f"{dia}/{self.cal_mes}/{self.cal_anio}"
+        if not deldia:
+            cont.add_widget(Label(text="No hay recordatorios este dia.",
+                                  color=TEXTO, font_size="15sp"))
+        else:
+            for dt, txt in deldia:
+                cont.add_widget(Label(text=f"{dt.hour:02d}:{dt.minute:02d}  {txt}",
+                                      color=TEXTO, font_size="15sp", halign="left",
+                                      valign="middle", text_size=(dp(240), None),
+                                      size_hint_y=None, height=dp(30)))
+        b_ok = BotonRedondo(text="Cerrar", color=ACCENT, radio=14,
+                            size_hint_y=None, height=dp(44))
+        cont.add_widget(b_ok)
+        popup = Popup(title=titulo, content=cont, size_hint=(0.85, 0.5),
+                      title_color=TEXTO, separator_color=ACCENT)
+        b_ok.bind(on_press=lambda w: popup.dismiss())
+        popup.open()
 
     def agregar_recordatorio(self):
         texto = self.aviso_entrada.text.strip()
@@ -883,7 +1156,10 @@ class AppNotas(App):
         })
         self.guardar_recordatorios()
         self.aviso_entrada.text = ""
-        self.refrescar_avisos()
+        if self.vista_avisos == "calendario":
+            self.mostrar_seccion("avisos")
+        else:
+            self.refrescar_avisos()
 
     def borrar_recordatorio(self, indice):
         if 0 <= indice < len(self.recordatorios):
@@ -965,7 +1241,7 @@ class AppNotas(App):
         limpiar.bind(on_press=lambda w: self.lienzo.limpiar())
         barra2.add_widget(limpiar)
         guardar = BotonRedondo(text="Guardar", color=VERDE, radio=12, font_size="13sp", bold=True)
-        guardar.bind(on_press=lambda w: self.guardar_dibujo())
+        guardar.bind(on_release=lambda w: self.guardar_dibujo())
         barra2.add_widget(guardar)
         self.contenido.add_widget(barra2)
 
@@ -1039,24 +1315,32 @@ class AppNotas(App):
 
     def crear_miniatura(self, ruta):
         card = Tarjeta(color=CARD, radio=14, orientation="vertical",
-                       size_hint_y=None, height=dp(190), padding=dp(6), spacing=dp(4))
+                       size_hint_y=None, height=dp(212), padding=dp(6), spacing=dp(4))
         img = Image(source=ruta, allow_stretch=True, keep_ratio=True)
         card.add_widget(img)
-        fila = BoxLayout(size_hint_y=None, height=dp(30), spacing=dp(6))
         fecha = Label(text=self.etiqueta_dibujo(ruta), color=TEXTO_TENUE,
-                      font_size="11sp", halign="left", valign="middle")
-        fecha.bind(size=lambda w, *a: setattr(w, "text_size", w.size))
-        fila.add_widget(fecha)
-        b_ver = BotonRedondo(text="Ver", color=ACCENT, radio=8, font_size="12sp",
-                             bold=True, size_hint_x=None, width=dp(48))
-        b_ver.bind(on_press=lambda w: self.ver_dibujo(ruta))
+                      font_size="11sp", size_hint_y=None, height=dp(16))
+        card.add_widget(fecha)
+        fila = BoxLayout(size_hint_y=None, height=dp(32), spacing=dp(5))
+        b_edit = BotonRedondo(text="Editar", color=VERDE, radio=8, font_size="12sp", bold=True)
+        b_edit.bind(on_release=lambda w: self.editar_dibujo(ruta))
+        fila.add_widget(b_edit)
+        b_ver = BotonRedondo(text="Ver", color=ACCENT, radio=8, font_size="12sp", bold=True)
+        b_ver.bind(on_release=lambda w: self.ver_dibujo(ruta))
         fila.add_widget(b_ver)
         b_del = BotonRedondo(text="X", color=BORRAR, radio=8, font_size="12sp",
                              bold=True, size_hint_x=None, width=dp(34))
-        b_del.bind(on_press=lambda w: self.borrar_dibujo(ruta))
+        b_del.bind(on_release=lambda w: self.borrar_dibujo(ruta))
         fila.add_widget(b_del)
         card.add_widget(fila)
         return card
+
+    def editar_dibujo(self, ruta):
+        if self.lienzo is None:
+            self.lienzo = Lienzo()
+        self.lienzo.cargar_imagen(ruta)
+        self.vista_dibujo = "lienzo"
+        self.mostrar_seccion("dibujo")
 
     def ver_dibujo(self, ruta):
         contenido = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
