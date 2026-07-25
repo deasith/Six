@@ -554,7 +554,7 @@ class AppNotas(App):
         if 0 <= indice < len(self.notas):
             self.notas[indice]["fav"] = not self.notas[indice].get("fav", False)
             self.guardar_notas()
-            Clock.schedule_once(lambda dt: self.refrescar_lista(), 0)
+            self.refrescar_lista()
 
     def confirmar_borrado(self, indice):
         if not (0 <= indice < len(self.notas)):
@@ -660,7 +660,7 @@ class AppNotas(App):
 
     def alternar_vista_tareas(self):
         self.vista_tareas = "tablero" if self.vista_tareas == "lista" else "lista"
-        Clock.schedule_once(lambda dt: self.mostrar_seccion("tareas"), 0)
+        self.mostrar_seccion("tareas")
 
     def _titulo_tareas(self):
         hechas = sum(1 for t in self.tareas if t.get("estado") == 2)
@@ -710,13 +710,13 @@ class AppNotas(App):
         if 0 <= indice < len(self.tareas):
             self.tareas[indice]["estado"] = 0 if self.tareas[indice].get("estado") == 2 else 2
             self.guardar_tareas()
-            Clock.schedule_once(lambda dt: self.refrescar_tareas(), 0)
+            self.refrescar_tareas()
 
     def borrar_tarea(self, indice):
         if 0 <= indice < len(self.tareas):
             self.tareas.pop(indice)
             self.guardar_tareas()
-            Clock.schedule_once(lambda dt: self.refrescar_tareas(), 0)
+            self.refrescar_tareas()
 
     # ---- Vista Tablero (Kanban) ----
     def construir_tablero(self):
@@ -782,13 +782,13 @@ class AppNotas(App):
             nuevo = self.tareas[indice].get("estado", 0) + delta
             self.tareas[indice]["estado"] = max(0, min(2, nuevo))
             self.guardar_tareas()
-            Clock.schedule_once(lambda dt: self.refrescar_tablero(), 0)
+            self.refrescar_tablero()
 
     def borrar_tarea_tablero(self, indice):
         if 0 <= indice < len(self.tareas):
             self.tareas.pop(indice)
             self.guardar_tareas()
-            Clock.schedule_once(lambda dt: self.refrescar_tablero(), 0)
+            self.refrescar_tablero()
 
     def agregar_tarea(self):
         texto = self.tarea_entrada.text.strip()
@@ -942,7 +942,7 @@ class AppNotas(App):
 
     def alternar_vista_dibujo(self):
         self.vista_dibujo = "galeria" if self.vista_dibujo == "lienzo" else "lienzo"
-        Clock.schedule_once(lambda dt: self.mostrar_seccion("dibujo"), 0)
+        self.mostrar_seccion("dibujo")
 
     def construir_lienzo(self):
         barra1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(6))
@@ -1089,7 +1089,7 @@ class AppNotas(App):
             except OSError:
                 pass
             popup.dismiss()
-            Clock.schedule_once(lambda dt: self.mostrar_seccion("dibujo"), 0)
+            self.mostrar_seccion("dibujo")
         b_si.bind(on_press=borrar)
         popup.open()
 
