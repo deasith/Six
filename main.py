@@ -33,6 +33,7 @@ Config.set("input", "mouse", "mouse,disable_multitouch")
 
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.core.text import LabelBase
 from kivy.core.window import Window
 from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.metrics import dp
@@ -124,10 +125,84 @@ COLORES = [
     (0.50, 0.80, 0.60, 1), (0.98, 0.80, 0.40, 1), (0.98, 0.60, 0.45, 1),
 ]
 
+# Paleta de colores para dibujar (estilo coquette/aesthetic).
+# Se muestra en una barra que se desliza para elegir cualquiera.
 DIBUJO_COLORES = [
-    (0.20, 0.20, 0.25, 1), (0.90, 0.30, 0.40, 1), (0.30, 0.55, 0.95, 1),
-    (0.30, 0.75, 0.45, 1), (0.98, 0.75, 0.30, 1), (0.95, 0.50, 0.65, 1),
+    (0.20, 0.20, 0.25, 1),   # negro suave
+    (0.55, 0.55, 0.62, 1),   # gris
+    (0.95, 0.50, 0.65, 1),   # rosa coquette
+    (0.98, 0.68, 0.78, 1),   # rosa pastel
+    (0.99, 0.80, 0.86, 1),   # rosa bebe
+    (0.90, 0.30, 0.40, 1),   # rojo fresa
+    (0.98, 0.55, 0.45, 1),   # coral
+    (0.98, 0.75, 0.30, 1),   # amarillo miel
+    (0.99, 0.87, 0.55, 1),   # mantequilla
+    (0.55, 0.80, 0.55, 1),   # verde pastel
+    (0.30, 0.75, 0.45, 1),   # verde
+    (0.60, 0.85, 0.82, 1),   # menta
+    (0.55, 0.78, 0.95, 1),   # celeste
+    (0.30, 0.55, 0.95, 1),   # azul
+    (0.72, 0.65, 0.92, 1),   # lavanda
+    (0.80, 0.55, 0.88, 1),   # lila
+    (0.85, 0.62, 0.52, 1),   # cafe con leche
+    (0.60, 0.42, 0.35, 1),   # chocolate
 ]
+
+# ---- Fuentes de escritura (estilo aesthetic/coquette) ----
+# Los archivos .ttf estan en la carpeta 'fuentes'. Se incluyen en el .apk.
+DIR_FUENTES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fuentes")
+
+# (nombre que se ve en la app, nombre interno de la fuente, archivo .ttf)
+# La primera (None) es la letra normal de siempre.
+FUENTES = [
+    ("Normal", None, None),
+    ("Redondita", "Quicksand", "Quicksand.ttf"),
+    ("Comfy", "Comfortaa", "Comfortaa.ttf"),
+    ("Cursiva", "DancingScript", "DancingScript.ttf"),
+    ("Playa", "Pacifico", "Pacifico.ttf"),
+    ("Cuaderno", "GochiHand", "GochiHand.ttf"),
+    ("Marcador", "PatrickHand", "PatrickHand.ttf"),
+]
+
+_ROBOTO_ORIGINAL = None   # ruta de la letra normal de Kivy (para volver atras)
+
+
+def registrar_fuentes():
+    """Deja listas todas las fuentes bonitas para poder usarlas."""
+    global _ROBOTO_ORIGINAL
+    try:
+        import kivy
+        _ROBOTO_ORIGINAL = os.path.join(os.path.dirname(kivy.__file__),
+                                        "data", "fonts", "Roboto-Regular.ttf")
+    except Exception:
+        _ROBOTO_ORIGINAL = None
+    for _, nombre, archivo in FUENTES:
+        if nombre is None:
+            continue
+        ruta = os.path.join(DIR_FUENTES, archivo)
+        if os.path.exists(ruta):
+            try:
+                LabelBase.register(name=nombre, fn_regular=ruta)
+            except Exception:
+                pass
+
+
+def aplicar_fuente(idx):
+    """Cambia la letra de TODA la app volviendo a registrar 'Roboto'
+    (la letra por defecto que usan todas las etiquetas)."""
+    idx = idx % len(FUENTES)
+    nombre, archivo = FUENTES[idx][1], FUENTES[idx][2]
+    try:
+        if nombre is None:
+            if _ROBOTO_ORIGINAL and os.path.exists(_ROBOTO_ORIGINAL):
+                LabelBase.register(name="Roboto", fn_regular=_ROBOTO_ORIGINAL)
+        else:
+            ruta = os.path.join(DIR_FUENTES, archivo)
+            if os.path.exists(ruta):
+                LabelBase.register(name="Roboto", fn_regular=ruta)
+    except Exception:
+        pass
+
 
 MESES = ["ene", "feb", "mar", "abr", "may", "jun",
          "jul", "ago", "sep", "oct", "nov", "dic"]
@@ -293,6 +368,9 @@ class Lienzo(Widget):
         self.color_lapiz = (0.20, 0.20, 0.25, 1)
         self.grosor = 3
         self._img_rect = None
+        self._img_tex = None       # textura del dibujo que se esta editando
+        self.trazos = []           # cada trazo: {"color":..., "width":..., "pts":[...]}
+        self._trazo_actual = None
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self._fondo = Rectangle(pos=self.pos, size=self.size)
@@ -308,20 +386,24 @@ class Lienzo(Widget):
     def cargar_imagen(self, ruta):
         """Carga un dibujo guardado para seguir editandolo."""
         from kivy.core.image import Image as CoreImage
-        self.canvas.clear()
-        if self._img_rect is not None:
-            self.canvas.before.remove(self._img_rect)
-            self._img_rect = None
+        self.limpiar()
         try:
             tex = CoreImage(ruta).texture
         except Exception:
             return
+        self._img_tex = tex
         with self.canvas.before:
             Color(1, 1, 1, 1)
             self._img_rect = Rectangle(texture=tex, pos=self.pos, size=self.size)
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
+            # Guardamos el trazo como datos (en coordenadas locales) para poder
+            # dibujarlo despues en la imagen guardada sin que salga en blanco.
+            self._trazo_actual = {"color": tuple(self.color_lapiz),
+                                  "width": self.grosor,
+                                  "pts": [touch.x - self.x, touch.y - self.y]}
+            self.trazos.append(self._trazo_actual)
             with self.canvas:
                 Color(*self.color_lapiz)
                 touch.ud["linea"] = Line(points=[touch.x, touch.y],
@@ -332,14 +414,52 @@ class Lienzo(Widget):
     def on_touch_move(self, touch):
         if "linea" in touch.ud and self.collide_point(*touch.pos):
             touch.ud["linea"].points += [touch.x, touch.y]
+            if self._trazo_actual is not None:
+                self._trazo_actual["pts"] += [touch.x - self.x, touch.y - self.y]
             return True
         return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if "linea" in touch.ud:
+            self._trazo_actual = None
+        return super().on_touch_up(touch)
 
     def limpiar(self):
         self.canvas.clear()
         if self._img_rect is not None:
-            self.canvas.before.remove(self._img_rect)
+            try:
+                self.canvas.before.remove(self._img_rect)
+            except Exception:
+                pass
             self._img_rect = None
+        self._img_tex = None
+        self.trazos = []
+        self._trazo_actual = None
+
+    def guardar_png(self, ruta):
+        """Dibuja el fondo blanco, la imagen editada (si hay) y todos los
+        trazos en una imagen fuera de pantalla (FBO) y la guarda. Asi el
+        dibujo nunca sale en blanco, aunque el widget este desplazado."""
+        from kivy.graphics import (Fbo, ClearColor, ClearBuffers,
+                                    Color as GColor, Line as GLine,
+                                    Rectangle as GRect)
+        w = max(1, int(self.width))
+        h = max(1, int(self.height))
+        fbo = Fbo(size=(w, h))
+        with fbo:
+            ClearColor(1, 1, 1, 1)
+            ClearBuffers()
+            if self._img_tex is not None:
+                GColor(1, 1, 1, 1)
+                GRect(texture=self._img_tex, pos=(0, 0), size=(w, h))
+            for t in self.trazos:
+                if len(t["pts"]) >= 2:
+                    GColor(*t["color"])
+                    GLine(points=t["pts"], width=t["width"],
+                          cap="round", joint="round")
+        fbo.draw()
+        fbo.texture.save(ruta, flipped=True)
+        return True
 
 
 class AppNotas(App):
@@ -365,6 +485,8 @@ class AppNotas(App):
         self.dir_dibujos = os.path.join(d, "dibujos")
         os.makedirs(self.dir_dibujos, exist_ok=True)
         aplicar_tema(self.config_app.get("tema", 0))
+        registrar_fuentes()
+        aplicar_fuente(self.config_app.get("fuente", 0))
         self.filtro = ""
         self.lienzo = None
         self.seccion = "notas"
@@ -464,8 +586,10 @@ class AppNotas(App):
             Window.clearcolor = FONDOS[idx % len(FONDOS)]
 
     def elegir_colores(self):
-        cont = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(8))
-        popup = Popup(title="Colores de la app", size_hint=(0.92, 0.72),
+        cont = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(8),
+                         size_hint_y=None)
+        cont.bind(minimum_height=cont.setter("height"))
+        popup = Popup(title="Colores y letra", size_hint=(0.92, 0.82),
                       title_color=TEXTO, separator_color=ACCENT)
 
         cont.add_widget(Label(text="Tema", color=TEXTO, size_hint_y=None,
@@ -487,11 +611,31 @@ class AppNotas(App):
             fila_f.add_widget(s)
         cont.add_widget(fila_f)
 
+        cont.add_widget(Label(text="Letra", color=TEXTO, size_hint_y=None,
+                              height=dp(22), font_size="15sp", bold=True))
+        grid_l = GridLayout(cols=2, size_hint_y=None, spacing=dp(8))
+        grid_l.bind(minimum_height=grid_l.setter("height"))
+        actual_f = self.config_app.get("fuente", 0)
+        for i, (nombre_f, nombre_int, _arch) in enumerate(FUENTES):
+            col_b = ACCENT if i == actual_f else CARD_BORDE
+            col_t = BLANCO if i == actual_f else TEXTO
+            b = BotonRedondo(text=nombre_f, color=col_b, texto_color=col_t,
+                             radio=12, font_size="16sp",
+                             size_hint_y=None, height=dp(44))
+            if nombre_int is not None:
+                b.font_name = nombre_int   # muestra el nombre en esa misma letra
+            b.bind(on_press=lambda w, idx=i: self._poner_fuente(idx, popup))
+            grid_l.add_widget(b)
+        cont.add_widget(grid_l)
+
         b_cerrar = BotonRedondo(text="Cerrar", color=ACCENT, radio=14,
                                 size_hint_y=None, height=dp(44))
         b_cerrar.bind(on_press=lambda w: popup.dismiss())
         cont.add_widget(b_cerrar)
-        popup.content = cont
+
+        scroll = ScrollView()
+        scroll.add_widget(cont)
+        popup.content = scroll
         popup.open()
 
     def _poner_tema(self, idx, popup):
@@ -507,6 +651,13 @@ class AppNotas(App):
         self.guardar_config()
         self.aplicar_fondo()
         popup.dismiss()
+
+    def _poner_fuente(self, idx, popup):
+        self.config_app["fuente"] = idx
+        aplicar_fuente(idx)
+        self.guardar_config()
+        popup.dismiss()
+        self.reconstruir()
 
     # ---------- Guardar/cargar ----------
     def normalizar_nota(self, nota):
@@ -575,7 +726,7 @@ class AppNotas(App):
                     return json.load(f)
             except (json.JSONDecodeError, OSError):
                 pass
-        return {"tema": 0, "fondo": -1}
+        return {"tema": 0, "fondo": -1, "fuente": 0}
 
     def guardar_config(self):
         self._guardar(self.archivo_config, self.config_app)
@@ -1275,16 +1426,24 @@ class AppNotas(App):
         self.mostrar_seccion("dibujo")
 
     def construir_lienzo(self):
-        barra1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(6))
-        for col in DIBUJO_COLORES:
-            b = BotonRedondo(color=col, radio=12, size_hint_x=None, width=dp(40))
-            b.bind(on_press=lambda w, c=col: self.set_color(c))
-            barra1.add_widget(b)
+        # Paleta de colores en una barra que se desliza de lado
+        scroll_col = ScrollView(size_hint_y=None, height=dp(48),
+                                do_scroll_x=True, do_scroll_y=False,
+                                bar_width=dp(3))
+        barra1 = BoxLayout(size_hint_x=None, height=dp(46), spacing=dp(6),
+                           padding=(dp(2), dp(2)))
+        barra1.bind(minimum_width=barra1.setter("width"))
         borrador = BotonRedondo(text="Borrador", color=CARD_BORDE, texto_color=TEXTO,
-                                radio=12, font_size="12sp", bold=True)
+                                radio=12, font_size="12sp", bold=True,
+                                size_hint_x=None, width=dp(84))
         borrador.bind(on_press=lambda w: self.set_color((1, 1, 1, 1)))
         barra1.add_widget(borrador)
-        self.contenido.add_widget(barra1)
+        for col in DIBUJO_COLORES:
+            b = BotonRedondo(color=col, radio=20, size_hint_x=None, width=dp(42))
+            b.bind(on_press=lambda w, c=col: self.set_color(c))
+            barra1.add_widget(b)
+        scroll_col.add_widget(barra1)
+        self.contenido.add_widget(scroll_col)
 
         barra2 = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
         for nombre, g in [("Fino", 2), ("Medio", 5), ("Grueso", 10)]:
@@ -1295,7 +1454,7 @@ class AppNotas(App):
         limpiar.bind(on_press=lambda w: self.lienzo.limpiar())
         barra2.add_widget(limpiar)
         guardar = BotonRedondo(text="Guardar", color=VERDE, radio=12, font_size="13sp", bold=True)
-        guardar.bind(on_release=lambda w: self.guardar_dibujo())
+        guardar.bind(on_press=lambda w: self.guardar_dibujo())
         barra2.add_widget(guardar)
         self.contenido.add_widget(barra2)
 
@@ -1319,9 +1478,14 @@ class AppNotas(App):
     def guardar_dibujo(self):
         if not self.lienzo:
             return
+        if not self.lienzo.trazos and self.lienzo._img_tex is None:
+            return   # nada que guardar (lienzo vacio)
         nombre = "dibujo_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".png"
         ruta = os.path.join(self.dir_dibujos, nombre)
-        self.lienzo.export_to_png(ruta)
+        try:
+            self.lienzo.guardar_png(ruta)
+        except Exception:
+            self.lienzo.export_to_png(ruta)   # respaldo por si falla el FBO
         self.lienzo.limpiar()   # empieza un lienzo nuevo en blanco
         contenido = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
         contenido.add_widget(Label(text="Dibujo guardado en la galeria.\nEl lienzo esta listo para uno nuevo.",

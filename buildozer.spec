@@ -11,7 +11,8 @@ package.domain = org.misnotas
 source.dir = .
 
 # Tipos de archivo que se incluyen en la app
-source.include_exts = py,png,jpg,kv,atlas,json
+# (ttf = las fuentes/letras bonitas de la carpeta 'fuentes')
+source.include_exts = py,png,jpg,kv,atlas,json,ttf
 
 # Version de tu app
 version = 1.0
