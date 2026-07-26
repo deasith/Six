@@ -1596,7 +1596,8 @@ class AppNotas(App):
         req = urllib.request.Request(
             "https://api.groq.com/openai/v1/chat/completions", data=datos, method="POST",
             headers={"Authorization": "Bearer " + clave,
-                     "content-type": "application/json"})
+                     "content-type": "application/json",
+                     "User-Agent": "MiCuaderno/1.0 (Android)"})
         try:
             import ssl
             import certifi
