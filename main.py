@@ -233,6 +233,16 @@ def escapar_markup(t):
     return t.replace("&", "&amp;").replace("[", "&bl;").replace("]", "&br;")
 
 
+def limpiar_clave_api(txt):
+    """Limpia la clave API por si al copiarla se pegaron espacios, saltos
+    de linea, comillas o un 'Bearer ' de mas. Una clave de Groq no tiene
+    espacios, asi que quitarlos es seguro."""
+    txt = txt.strip().strip('"').strip("'").strip()
+    if txt.lower().startswith("bearer "):
+        txt = txt[7:]
+    return "".join(txt.split())   # quita cualquier espacio o salto interno
+
+
 def parsear_fecha_hora(texto):
     """Detecta una fecha y hora dentro de un texto en espanol.
     Devuelve un datetime, o None si no encuentra nada."""
@@ -622,8 +632,10 @@ class AppNotas(App):
             b = BotonRedondo(text=nombre_f, color=col_b, texto_color=col_t,
                              radio=12, font_size="16sp",
                              size_hint_y=None, height=dp(44))
-            if nombre_int is not None:
-                b.font_name = nombre_int   # muestra el nombre en esa misma letra
+            # muestra el nombre en esa misma letra (solo si el archivo existe)
+            if nombre_int is not None and _arch is not None and \
+                    os.path.exists(os.path.join(DIR_FUENTES, _arch)):
+                b.font_name = nombre_int
             b.bind(on_press=lambda w, idx=i: self._poner_fuente(idx, popup))
             grid_l.add_widget(b)
         cont.add_widget(grid_l)
@@ -1702,7 +1714,7 @@ class AppNotas(App):
         b_cancel.bind(on_press=lambda w: popup.dismiss())
 
         def guardar(_):
-            self.config_app["api_key"] = entrada.text.strip()
+            self.config_app["api_key"] = limpiar_clave_api(entrada.text)
             self.guardar_config()
             popup.dismiss()
             self.mostrar_seccion("ia")
@@ -1731,7 +1743,14 @@ class AppNotas(App):
                 detalle = json.loads(e.read().decode("utf-8"))["error"]["message"]
             except Exception:
                 detalle = str(e)
-            respuesta = "Ups, la IA respondio con un error:\n" + detalle
+            if e.code in (401, 403):
+                respuesta = ("Tu clave API no fue aceptada. Revisa que la copiaste "
+                             "completa (empieza con gsk_) en el boton 'Clave API'.\n" + detalle)
+            elif e.code == 429:
+                respuesta = ("La IA esta ocupada o llegaste al limite gratis por ahora. "
+                             "Espera un momento y vuelve a intentar.\n" + detalle)
+            else:
+                respuesta = "Ups, la IA respondio con un error:\n" + detalle
         except Exception as e:
             respuesta = "No pude conectar con la IA. Revisa tu internet.\n" + str(e)
 
@@ -1755,7 +1774,7 @@ class AppNotas(App):
             "messages": mensajes,
             "max_tokens": 1024,
         }
-        clave = self.config_app.get("api_key", "")
+        clave = limpiar_clave_api(self.config_app.get("api_key", ""))
         datos = json.dumps(cuerpo).encode("utf-8")
         req = urllib.request.Request(
             "https://api.groq.com/openai/v1/chat/completions", data=datos, method="POST",
