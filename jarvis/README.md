@@ -73,11 +73,19 @@ En **"🔑 Clave IA"** ya no hace falta escribirla letra por letra: copia la
 clave en la web de Groq (Ctrl+C) y en la app pulsa **"📋 Pegar"** (o clic
 derecho → Pegar).
 
-## 🔊 Voz
+## 🔊 Voz (Jarvis te habla)
 
 - Botón **"🔊 Voz: ON/OFF"** para activar o silenciar la voz.
 - La voz nativa de Windows funciona sin instalar nada.
 - ¿Quieres mejor voz? En CMD: `pip install pyttsx3` y reinicia Jarvis.
+
+## 🎤 Micrófono (hablarle a Jarvis)
+
+- Pulsa **"🎤 Hablar"**, di tu frase y Jarvis la escribe y responde solo.
+- Funciona con el reconocimiento nativo de Windows **sin instalar nada**.
+- Para la **mejor calidad** (reconocimiento por Google, muy bueno en español),
+  en CMD: `pip install SpeechRecognition pyaudio` y reinicia Jarvis.
+- La barra de estado de abajo te dice si el micro está listo.
 
 ## ❓ Problemas
 

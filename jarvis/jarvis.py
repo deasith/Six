@@ -46,15 +46,19 @@ from tkinter import scrolledtext
 ARCHIVO_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               "jarvis_config.json")
 
-FONDO = "#0b1220"
-FONDO_CHAT = "#0f1830"
-PANEL = "#131f3d"
-ACENTO = "#39d0ff"       # cian estilo Jarvis
-ACENTO2 = "#7c5cff"      # violeta
-TEXTO = "#e8f0ff"
-TEXTO_TENUE = "#8aa0c8"
-USUARIO = "#ffd479"      # amarillo suave para lo que escribes tu
-VERDE = "#4be089"
+FONDO = "#070b16"          # fondo general, casi negro azulado
+FONDO_CHAT = "#0b1424"     # zona de chat
+PANEL = "#16243f"          # botones y cajas
+PANEL_HOVER = "#20345c"    # botones al pasar el raton
+ACENTO = "#3fd8ff"         # cian estilo Jarvis (arc reactor)
+ACENTO2 = "#8a6cff"        # violeta
+ACENTO3 = "#00131f"        # cian oscuro para el degradado
+TEXTO = "#eaf2ff"
+TEXTO_TENUE = "#8fa6cf"
+USUARIO = "#ffd479"        # amarillo suave para lo que escribes tu
+BURBUJA_J = "#12233c"      # fondo de los mensajes de Jarvis
+BURBUJA_TU = "#1f2c22"     # fondo de tus mensajes
+VERDE = "#57e39a"
 ROJO = "#ff6b6b"
 
 ES_WINDOWS = platform.system() == "Windows"
@@ -197,6 +201,79 @@ class Voz:
             proc.communicate(input=seguro.encode("utf-8", errors="ignore"))
         except Exception:
             pass
+
+
+# ----------------------------------------------------------------------------
+# MICROFONO (voz a texto). Intenta, por orden:
+#   1) speech_recognition + Google (gratis, muy bueno en espanol) si esta
+#      instalado junto con pyaudio.
+#   2) Reconocimiento nativo de Windows via PowerShell (sin instalar nada).
+# ----------------------------------------------------------------------------
+class Microfono:
+    def __init__(self):
+        self.metodo = "ninguno"
+        self.sr = None
+        try:
+            import speech_recognition as sr
+            import pyaudio  # noqa: F401  (necesario para usar el microfono)
+            self.sr = sr
+            self.metodo = "sr"
+        except Exception:
+            if ES_WINDOWS:
+                self.metodo = "powershell"
+
+    def disponible(self):
+        return self.metodo != "ninguno"
+
+    def como_activar(self):
+        return ("Para el microfono con la mejor calidad instala esto en CMD:\n"
+                "   pip install SpeechRecognition pyaudio\n"
+                "y reinicia Jarvis.")
+
+    def escuchar(self):
+        """Bloqueante. Devuelve el texto reconocido, o marcadores:
+        '' = no entendio, '__error__' = fallo, '__nomic__' = sin microfono."""
+        if self.metodo == "sr":
+            return self._escuchar_sr()
+        if self.metodo == "powershell":
+            return self._escuchar_powershell()
+        return "__nomic__"
+
+    def _escuchar_sr(self):
+        sr = self.sr
+        r = sr.Recognizer()
+        try:
+            with sr.Microphone() as fuente:
+                r.adjust_for_ambient_noise(fuente, duration=0.4)
+                audio = r.listen(fuente, timeout=6, phrase_time_limit=12)
+        except Exception:
+            return "__nomic__"
+        try:
+            return r.recognize_google(audio, language="es-ES").strip()
+        except sr.UnknownValueError:
+            return ""
+        except Exception:
+            return "__error__"
+
+    def _escuchar_powershell(self):
+        script = (
+            "Add-Type -AssemblyName System.Speech;"
+            "try { $ci = New-Object System.Globalization.CultureInfo 'es-ES';"
+            "$r = New-Object System.Speech.Recognition.SpeechRecognitionEngine $ci }"
+            "catch { $r = New-Object System.Speech.Recognition.SpeechRecognitionEngine };"
+            "$r.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar));"
+            "try { $r.SetInputToDefaultAudioDevice() } catch { exit };"
+            "$res = $r.Recognize([TimeSpan]::FromSeconds(10));"
+            "if ($res -ne $null) { [Console]::Out.Write($res.Text) }"
+        )
+        try:
+            salida = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", script],
+                capture_output=True, text=True, timeout=25)
+            texto = (salida.stdout or "").strip()
+            return texto
+        except Exception:
+            return "__error__"
 
 
 # ----------------------------------------------------------------------------
@@ -737,16 +814,19 @@ def preguntar_ia(historial, clave_api):
     turnos = [m for m in historial if m.get("role") in ("user", "assistant")][-20:]
     mensajes = [{"role": "system", "content":
                  "Eres JARVIS, un asistente de escritorio con IA, inspirado en "
-                 "el de las peliculas de Iron Man, pero en tu propia version: "
-                 "colega, gracioso y con un sarcasmo elegante. Hablas en espanol "
-                 "y SIEMPRE tuteas al usuario (nada de 'usted'), como si fuera tu "
-                 "amigo. Sueltas comentarios ingeniosos y algo de sarcasmo carinoso, "
-                 "pero SIEMPRE ayudas de verdad y das la informacion correcta. "
-                 "No te pases de largo: respuestas utiles y con chispa, no ladrillos "
-                 "de texto. Si algo es obvio, puedes picarle un poco con humor. "
-                 "Nunca eres borde ni ofensivo; el sarcasmo es de buen rollo. "
-                 "De vez en cuando puedes rematar con una frase con estilo, como "
-                 "haria un asistente de peli de ciencia ficcion. "
+                 "el de Iron Man pero en tu propia version: colega, muy gracioso, "
+                 "con sarcasmo afilado y humor negro. Hablas en espanol y SIEMPRE "
+                 "tuteas al usuario, como un amigo con mala lengua pero buen "
+                 "corazon. Tu humor es acido, irreverente y con toques de humor "
+                 "negro (ironia sobre la vida, la muerte en broma, el caos "
+                 "cotidiano), estilo comediante de stand-up. PERO tienes limites "
+                 "claros: nunca eres cruel con el usuario de verdad, ni haces "
+                 "chistes de odio (racismo, sexismo, etc.), ni bromeas sobre "
+                 "autolesion, ni das nada peligroso o ilegal. El filo es para "
+                 "reir, no para herir. Y por encima del humor, SIEMPRE ayudas de "
+                 "verdad y das informacion correcta y util. Respuestas con chispa "
+                 "y al grano, nada de ladrillos de texto. Remata de vez en cuando "
+                 "con una frase con estilo de asistente de ciencia ficcion. "
                  "Conoces el equipo del usuario; estos son sus datos ahora mismo: "
                  + contexto_para_ia() +
                  ". Si te preguntan por acciones del PC (abrir programas, buscar "
@@ -789,6 +869,7 @@ class Jarvis:
         self.config = cargar_config()
         self.voz = Voz()
         self.voz.activa = self.config.get("voz", True)
+        self.mic = Microfono()
         self.historial = []
         self.ultimos_archivos = []   # resultados de la ultima busqueda
         self.recordatorios = []      # recordatorios pendientes
@@ -810,67 +891,127 @@ class Jarvis:
 
     # ---- construccion de la interfaz ----
     def _construir(self):
-        cab = tk.Frame(self.ventana, bg=FONDO)
-        cab.pack(fill="x", padx=16, pady=(14, 6))
+        UI = "Segoe UI"
 
-        tk.Label(cab, text="◆ J.A.R.V.I.S.", bg=FONDO, fg=ACENTO,
-                 font=("Consolas", 20, "bold")).pack(side="left")
-        tk.Label(cab, text="  asistente de escritorio", bg=FONDO, fg=TEXTO_TENUE,
-                 font=("Segoe UI", 10)).pack(side="left", pady=(8, 0))
+        # -------- Cabecera con degradado y reactor arc (dibujada en Canvas) ----
+        self.header = tk.Canvas(self.ventana, height=74, bg=FONDO,
+                                highlightthickness=0)
+        self.header.pack(fill="x", side="top")
 
-        botones = tk.Frame(cab, bg=FONDO)
-        botones.pack(side="right")
+        botones = tk.Frame(self.header, bg=FONDO)
+        self.btn_voz = self._boton(botones, self._texto_voz(), self.alternar_voz)
+        self.btn_voz.pack(side="left", padx=3)
+        self.btn_mic = self._boton(botones, "🎤 Hablar", self.escuchar)
+        self.btn_mic.pack(side="left", padx=3)
+        self._boton(botones, "🔑 Clave IA", self.pedir_clave).pack(side="left", padx=3)
+        self._boton(botones, "🧹 Limpiar", self.limpiar).pack(side="left", padx=3)
+        self._botones_win = self.header.create_window(0, 0, window=botones,
+                                                      anchor="e")
+        self.header.bind("<Configure>", self._dibujar_header)
 
-        self.btn_voz = tk.Button(
-            botones, text=self._texto_voz(), command=self.alternar_voz,
-            bg=PANEL, fg=TEXTO, activebackground=ACENTO2, relief="flat",
-            font=("Segoe UI", 9, "bold"), padx=10, pady=4, cursor="hand2")
-        self.btn_voz.pack(side="left", padx=4)
+        # -------- Barra de estado (abajo del todo) ----------------------------
+        pie = tk.Frame(self.ventana, bg=FONDO)
+        pie.pack(side="bottom", fill="x")
+        self.estado = tk.Label(pie, text="", bg=FONDO, fg=TEXTO_TENUE,
+                               font=(UI, 9), anchor="w")
+        self.estado.pack(side="left", padx=18, pady=(0, 6))
 
-        tk.Button(botones, text="🔑 Clave IA", command=self.pedir_clave,
-                  bg=PANEL, fg=TEXTO, activebackground=ACENTO2, relief="flat",
-                  font=("Segoe UI", 9, "bold"), padx=10, pady=4,
-                  cursor="hand2").pack(side="left", padx=4)
-
-        tk.Button(botones, text="🧹 Limpiar", command=self.limpiar,
-                  bg=PANEL, fg=TEXTO, activebackground=ACENTO2, relief="flat",
-                  font=("Segoe UI", 9, "bold"), padx=10, pady=4,
-                  cursor="hand2").pack(side="left", padx=4)
-
-        # IMPORTANTE: empaquetamos la barra de escribir ANTES que el chat y
-        # anclada abajo (side="bottom"). Asi Tkinter le reserva su sitio
-        # primero y nunca queda tapada, aunque la ventana sea pequena.
+        # -------- Barra de escribir (encima del estado) -----------------------
         barra = tk.Frame(self.ventana, bg=FONDO)
-        barra.pack(side="bottom", fill="x", padx=16, pady=(6, 14))
+        barra.pack(side="bottom", fill="x", padx=16, pady=(8, 4))
 
-        self.entrada = tk.Entry(
-            barra, bg=PANEL, fg=TEXTO, relief="flat", font=("Segoe UI", 13),
-            insertbackground=ACENTO)
-        self.entrada.pack(side="left", fill="x", expand=True, ipady=8, padx=(0, 8))
+        caja = tk.Frame(barra, bg=PANEL)  # marco para dar aspecto redondeado
+        caja.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.entrada = tk.Entry(caja, bg=PANEL, fg=TEXTO, relief="flat",
+                                font=(UI, 13), insertbackground=ACENTO)
+        self.entrada.pack(fill="x", expand=True, ipady=9, padx=12)
         self.entrada.bind("<Return>", lambda e: self.enviar())
-        habilitar_menu_edicion(self.entrada)  # clic derecho -> Pegar/Copiar
+        habilitar_menu_edicion(self.entrada)
         self.entrada.focus_set()
 
-        self.btn_enviar = tk.Button(
-            barra, text="Enviar  ➤", command=self.enviar,
-            bg=ACENTO, fg=FONDO, activebackground=ACENTO2, relief="flat",
-            font=("Segoe UI", 11, "bold"), padx=18, pady=6, cursor="hand2")
+        self.btn_enviar = self._boton(barra, "Enviar  ➤", self.enviar,
+                                      principal=True)
+        self.btn_enviar.config(font=(UI, 11, "bold"), padx=18, pady=8)
         self.btn_enviar.pack(side="right")
 
-        # Zona del chat (rellena el espacio que queda arriba de la barra)
+        # -------- Zona del chat (rellena el resto) ----------------------------
         self.chat = scrolledtext.ScrolledText(
             self.ventana, bg=FONDO_CHAT, fg=TEXTO, relief="flat",
-            font=("Segoe UI", 12), wrap="word", state="disabled",
-            padx=14, pady=12, insertbackground=TEXTO)
-        self.chat.pack(side="top", fill="both", expand=True, padx=16, pady=8)
-        self.chat.tag_config("jarvis", foreground=ACENTO,
-                             font=("Segoe UI", 12, "bold"))
-        self.chat.tag_config("jarvis_txt", foreground=TEXTO)
-        self.chat.tag_config("tu", foreground=USUARIO,
-                             font=("Segoe UI", 12, "bold"))
-        self.chat.tag_config("tu_txt", foreground=USUARIO)
+            font=(UI, 12), wrap="word", state="disabled",
+            padx=10, pady=12, insertbackground=TEXTO, borderwidth=0)
+        self.chat.pack(side="top", fill="both", expand=True, padx=14, pady=(8, 4))
+
+        # Burbujas: Jarvis a la izquierda, tu a la derecha.
+        self.chat.tag_config("j_nombre", foreground=ACENTO,
+                             font=(UI, 10, "bold"), spacing1=12,
+                             lmargin1=16, lmargin2=16)
+        self.chat.tag_config("j_txt", foreground=TEXTO, font=(UI, 12),
+                             background=BURBUJA_J, lmargin1=16, lmargin2=16,
+                             rmargin=90, spacing1=3, spacing3=10)
+        self.chat.tag_config("t_nombre", foreground=USUARIO,
+                             font=(UI, 10, "bold"), justify="right",
+                             rmargin=16, spacing1=12)
+        self.chat.tag_config("t_txt", foreground="#eafbe6", font=(UI, 12),
+                             background=BURBUJA_TU, justify="right",
+                             lmargin1=90, lmargin2=90, rmargin=16,
+                             spacing1=3, spacing3=10)
         self.chat.tag_config("sistema", foreground=TEXTO_TENUE,
-                             font=("Segoe UI", 10, "italic"))
+                             font=(UI, 10, "italic"), justify="center",
+                             spacing1=8, spacing3=6)
+
+        self._actualizar_estado()
+
+    # ---- helpers visuales ----
+    def _boton(self, parent, texto, comando, principal=False):
+        bg = ACENTO if principal else PANEL
+        fg = FONDO if principal else TEXTO
+        hov = ACENTO2 if principal else PANEL_HOVER
+        b = tk.Button(parent, text=texto, command=comando, bg=bg, fg=fg,
+                      relief="flat", font=("Segoe UI", 9, "bold"), padx=12,
+                      pady=5, cursor="hand2", activebackground=hov,
+                      activeforeground=fg, bd=0, highlightthickness=0)
+        b.bind("<Enter>", lambda e: b.config(bg=hov))
+        b.bind("<Leave>", lambda e: b.config(bg=bg))
+        return b
+
+    def _mezcla(self, c1, c2, t):
+        a = self.ventana.winfo_rgb(c1)
+        b = self.ventana.winfo_rgb(c2)
+        r = int((a[0] + (b[0] - a[0]) * t) / 256)
+        g = int((a[1] + (b[1] - a[1]) * t) / 256)
+        bl = int((a[2] + (b[2] - a[2]) * t) / 256)
+        return "#%02x%02x%02x" % (r, g, bl)
+
+    def _dibujar_header(self, evento=None):
+        c = self.header
+        w, h = c.winfo_width(), c.winfo_height()
+        if w <= 1:
+            return
+        c.delete("deco")
+        for x in range(0, w, 3):  # degradado horizontal
+            col = self._mezcla(ACENTO3, FONDO, x / float(w))
+            c.create_rectangle(x, 0, x + 3, h, fill=col, outline=col, tags="deco")
+        c.create_line(0, h - 1, w, h - 1, fill=ACENTO, tags="deco")
+        # Reactor arc (circulos concentricos)
+        cx, cy = 34, h // 2
+        for i, col in enumerate(["#0a3a4a", "#0f5f78", "#1f9fc4", ACENTO]):
+            r = 20 - i * 4
+            c.create_oval(cx - r, cy - r, cx + r, cy + r, outline=col, width=2,
+                          tags="deco")
+        c.create_oval(cx - 3, cy - 3, cx + 3, cy + 3, fill=ACENTO, outline=ACENTO,
+                      tags="deco")
+        c.create_text(62, cy - 9, text="J.A.R.V.I.S.", anchor="w", fill=TEXTO,
+                      font=("Consolas", 18, "bold"), tags="deco")
+        c.create_text(64, cy + 12, text="asistente con actitud", anchor="w",
+                      fill=TEXTO_TENUE, font=("Segoe UI", 9), tags="deco")
+        c.coords(self._botones_win, w - 12, cy)
+        c.tag_raise(self._botones_win)
+
+    def _actualizar_estado(self):
+        mic = "🎤 Micro listo" if self.mic.disponible() else "🎤 Sin micro"
+        voz = "🔊 Voz ON" if self.voz.activa else "🔇 Voz OFF"
+        ia = "🧠 IA activa" if self.config.get("api_key") else "🧠 IA apagada"
+        self.estado.config(text="%s    ·    %s    ·    %s" % (mic, voz, ia))
 
     def _texto_voz(self):
         return "🔊 Voz: ON" if self.voz.activa else "🔇 Voz: OFF"
@@ -878,24 +1019,22 @@ class Jarvis:
     # ---- utilidades de chat ----
     def _escribir(self, quien, texto, tag_nombre, tag_txt):
         self.chat.config(state="normal")
-        if self.chat.index("end-1c") != "1.0":
-            self.chat.insert("end", "\n")
-        self.chat.insert("end", quien + "  ", tag_nombre)
-        self.chat.insert("end", texto + "\n", tag_txt)
+        self.chat.insert("end", quien + "\n", tag_nombre)
+        self.chat.insert("end", " " + texto + " \n", tag_txt)
         self.chat.config(state="disabled")
         self.chat.see("end")
 
     def msg_jarvis(self, texto, hablar=True):
-        self._escribir("JARVIS", texto, "jarvis", "jarvis_txt")
+        self._escribir("◆ JARVIS", texto, "j_nombre", "j_txt")
         if hablar and self.voz.activa:
             self.voz.decir(texto)
 
     def msg_tu(self, texto):
-        self._escribir("TU", texto, "tu", "tu_txt")
+        self._escribir("TÚ", texto, "t_nombre", "t_txt")
 
     def msg_sistema(self, texto):
         self.chat.config(state="normal")
-        self.chat.insert("end", "\n" + texto + "\n", "sistema")
+        self.chat.insert("end", texto + "\n", "sistema")
         self.chat.config(state="disabled")
         self.chat.see("end")
 
@@ -907,16 +1046,17 @@ class Jarvis:
             saludo = "Buenas tardes"
         else:
             saludo = "Buenas noches"
-        self.msg_jarvis("%s. Jarvis en linea y listo para lo que necesites. "
-                        "Puedo abrir programas, buscar en la web, decirte la hora "
-                        "y, si me das mi cerebro de IA, resolverte casi cualquier "
-                        "cosa. Tu solo escribe, que yo me encargo." % saludo)
+        micro = ("Puedes escribirme o pulsar \"🎤 Hablar\" y decirmelo, que hoy "
+                 "tengo el oido fino." if self.mic.disponible()
+                 else "Escribeme lo que quieras.")
+        self.msg_jarvis("%s. Jarvis en linea, con mala leche del bueno y ganas de "
+                        "ayudar. %s Abro programas, busco cosas, controlo tu PC y, "
+                        "con mi cerebro de IA puesto, te resuelvo casi todo (o me "
+                        "rio contigo en el intento)." % (saludo, micro))
         if not self.config.get("api_key"):
-            self.msg_sistema("Oye, todavia estoy en modo basico. Pulsa "
-                             "\"🔑 Clave IA\", pega una clave gratis de "
-                             "console.groq.com y despierto mi cerebro completo. "
-                             "Mientras tanto, hago los comandos rapidos sin quejarme "
-                             "(mucho).")
+            self.msg_sistema("Sigo en modo basico: pulsa \"🔑 Clave IA\", pega una "
+                             "clave gratis de console.groq.com y despierto todo mi "
+                             "encanto sarcastico.")
 
     # ---- acciones ----
     def alternar_voz(self):
@@ -926,6 +1066,35 @@ class Jarvis:
         self.btn_voz.config(text=self._texto_voz())
         self.config["voz"] = self.voz.activa
         guardar_config(self.config)
+        self._actualizar_estado()
+
+    # ---- microfono (voz a texto) ----
+    def escuchar(self):
+        if not self.mic.disponible():
+            self.msg_sistema("No tengo microfono disponible. " +
+                             self.mic.como_activar())
+            return
+        self.btn_mic.config(text="🎤 Escuchando…", state="disabled")
+        self.msg_sistema("Escuchando… habla ahora.")
+        threading.Thread(target=self._escuchar_hilo, daemon=True).start()
+
+    def _escuchar_hilo(self):
+        texto = self.mic.escuchar()
+        self.ventana.after(0, self._tras_escuchar, texto)
+
+    def _tras_escuchar(self, texto):
+        self.btn_mic.config(text="🎤 Hablar", state="normal")
+        avisos = {
+            "": "No te pille nada. Repite, y esta vez proyecta la voz.",
+            "__error__": "Fallo el reconocimiento. Revisa el micro y el internet.",
+            "__nomic__": "No encuentro el microfono. ¿Seguro que esta conectado?",
+        }
+        if texto in avisos:
+            self.msg_sistema(avisos[texto])
+            return
+        self.entrada.delete(0, "end")
+        self.entrada.insert(0, texto)
+        self.enviar()
 
     def limpiar(self):
         self.historial = []
@@ -976,6 +1145,7 @@ class Jarvis:
             self.config["api_key"] = limpiar_clave_api(entrada.get())
             guardar_config(self.config)
             top.destroy()
+            self._actualizar_estado()
             if self.config["api_key"]:
                 self.msg_jarvis("Clave guardada. Cerebro conectado. Ahora si, "
                                 "preguntame lo que quieras.", hablar=False)
