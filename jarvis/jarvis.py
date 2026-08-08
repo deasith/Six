@@ -23,6 +23,7 @@ Voz (opcional, mejor calidad):
 
 import datetime
 import json
+import difflib
 import getpass
 import os
 import platform
@@ -33,6 +34,7 @@ import socket
 import ssl
 import subprocess
 import threading
+import unicodedata
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -242,18 +244,34 @@ class Microfono:
     def _escuchar_sr(self):
         sr = self.sr
         r = sr.Recognizer()
+        # Ajustes para captar mejor el habla real y no cortar a mitad de frase.
+        r.dynamic_energy_threshold = True   # se adapta al ruido de fondo
+        r.pause_threshold = 0.9             # espera un poco antes de cerrar
+        r.non_speaking_duration = 0.5
         try:
             with sr.Microphone() as fuente:
-                r.adjust_for_ambient_noise(fuente, duration=0.4)
-                audio = r.listen(fuente, timeout=6, phrase_time_limit=12)
+                # Calibracion algo mas larga = menos falsos cortes.
+                r.adjust_for_ambient_noise(fuente, duration=0.8)
+                audio = r.listen(fuente, timeout=7, phrase_time_limit=15)
         except Exception:
             return "__nomic__"
+        # Pedimos varias alternativas y nos quedamos con la de mas confianza.
         try:
-            return r.recognize_google(audio, language="es-ES").strip()
+            resp = r.recognize_google(audio, language="es-ES", show_all=True)
         except sr.UnknownValueError:
             return ""
         except Exception:
             return "__error__"
+        if not resp:
+            return ""
+        alternativas = resp.get("alternative", []) if isinstance(resp, dict) else []
+        if not alternativas:
+            return ""
+        # La primera suele ser la mejor; si trae 'confidence' elegimos la mayor.
+        mejor = max(alternativas,
+                    key=lambda a: a.get("confidence", 0)) if any(
+                        "confidence" in a for a in alternativas) else alternativas[0]
+        return (mejor.get("transcript") or "").strip()
 
     def _escuchar_powershell(self):
         script = (
@@ -274,6 +292,55 @@ class Microfono:
             return texto
         except Exception:
             return "__error__"
+
+
+# ----------------------------------------------------------------------------
+# RECONOCIMIENTO DIFUSO: entiende aunque te equivoques al escribir o hablar
+# ("ke ora es", "qe hora", "cuentame un chizte", "avre la calculadora"...).
+# ----------------------------------------------------------------------------
+def sin_acentos(s):
+    return "".join(c for c in unicodedata.normalize("NFD", s)
+                   if unicodedata.category(c) != "Mn")
+
+
+def _parecido(a, b):
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def fuzzy_contiene(texto, objetivos, umbral=0.82):
+    """True si alguna palabra (o par de palabras) del texto se parece mucho
+    a alguno de los 'objetivos'. Tolera erratas y mala pronunciacion."""
+    toks = [sin_acentos(x) for x in texto.split()]
+    metas = [sin_acentos(o) for o in objetivos]
+    for meta in metas:
+        if " " in meta:  # objetivo de dos palabras -> comparar con bigramas
+            for i in range(len(toks) - 1):
+                if _parecido(toks[i] + " " + toks[i + 1], meta) >= umbral:
+                    return True
+            continue
+        if len(meta) < 3:
+            if meta in toks:
+                return True
+            continue
+        for tok in toks:
+            if len(tok) < 3:
+                continue
+            if _parecido(tok, meta) >= umbral:
+                return True
+    return False
+
+
+def palabra_tras_verbo(texto, verbos, umbral=0.8):
+    """Si la primera palabra se parece a alguno de 'verbos', devuelve el
+    resto de la frase (para 'avre la calculadora' -> 'la calculadora')."""
+    partes = texto.split(None, 1)
+    if len(partes) < 2:
+        return None
+    primera = sin_acentos(partes[0])
+    for v in verbos:
+        if _parecido(primera, sin_acentos(v)) >= umbral:
+            return partes[1].strip()
+    return None
 
 
 # ----------------------------------------------------------------------------
@@ -734,7 +801,81 @@ def comando_local(texto):
                 "Y con mi clave de IA puesta, te respondo cualquier cosa (y ya "
                 "conozco los datos de tu equipo).")
 
+    # --- PASO DIFUSO: si nada exacto encajo, intentamos entender con erratas ---
+    difusa = intencion_difusa(t)
+    if difusa is not None:
+        return difusa
+
     return None  # -> lo maneja la IA
+
+
+def intencion_difusa(t):
+    """Ultima oportunidad de entender un comando mal escrito o mal oido.
+    Solo cubre intenciones simples y seguras; si duda, devuelve None para
+    que conteste la IA."""
+    # Hora  ("ke ora es", "qe hora", "kiero saber la ora")
+    if fuzzy_contiene(t, ["hora", "ora"]) and not fuzzy_contiene(t, ["ahora"]):
+        ahora = datetime.datetime.now()
+        return "Son las %02d:%02d." % (ahora.hour, ahora.minute)
+
+    # Fecha ("que dia es oy", "fexa", "feca")
+    if (fuzzy_contiene(t, ["fecha", "fexa", "feca", "fexha"], umbral=0.8)
+            or (fuzzy_contiene(t, ["dia"]) and
+                fuzzy_contiene(t, ["hoy", "que", "es"]))):
+        hoy = datetime.date.today()
+        return "Hoy es %s %d de %s de %d." % (
+            DIAS[hoy.weekday()], hoy.day, MESES[hoy.month - 1], hoy.year)
+
+    # Bateria
+    if fuzzy_contiene(t, ["bateria", "pila"]):
+        pct, ench = info_bateria()
+        if pct is None:
+            return "No detecto bateria (o eres un PC de mesa, campeon)."
+        extra = " y esta cargando" if ench else ""
+        return "Bateria al %d%%%s." % (pct, extra)
+
+    # Chiste
+    if fuzzy_contiene(t, ["chiste", "chistes"]):
+        import random
+        return random.choice(CHISTES)
+
+    # Ayuda
+    if fuzzy_contiene(t, ["ayuda", "comandos"]):
+        return comando_local("ayuda")
+
+    # Saludo / gracias
+    if fuzzy_contiene(t, ["hola", "ola", "buenas", "hey"], umbral=0.8):
+        return "Hey. Aqui estoy, sin cafe pero con ganas. Dime que necesitas."
+    if fuzzy_contiene(t, ["gracias"]):
+        return "A mandar. Para algo soy tu asistente favorito (y el unico)."
+
+    # Volumen y bloqueo (tolerante: "suve", "vaja")
+    if fuzzy_contiene(t, ["volumen", "sonido"]):
+        if fuzzy_contiene(t, ["sube", "subir", "mas", "alto"], umbral=0.72):
+            return control_volumen("subir")
+        if fuzzy_contiene(t, ["baja", "bajar", "menos", "bajo"], umbral=0.72):
+            return control_volumen("bajar")
+    if fuzzy_contiene(t, ["silencia", "mutea", "mute"], umbral=0.75):
+        return control_volumen("silenciar")
+    if fuzzy_contiene(t, ["bloquea", "bloquear"], umbral=0.78):
+        return bloquear_pc()
+
+    # Abrir algo ("avre la calculadora", "habre gmail")
+    resto = palabra_tras_verbo(t, ["abre", "abrir", "abreme", "habre", "inicia",
+                                   "ejecuta", "lanza"], umbral=0.72)
+    if resto:
+        resto = re.sub(r"^(el|la|mi|un|una|la pagina|la web)\s+", "", resto)
+        return abrir_programa(resto)
+
+    # Buscar en la web ("buska gatos", "vusca recetas")
+    resto = palabra_tras_verbo(t, ["busca", "buscar", "googlea", "investiga"],
+                               umbral=0.72)
+    if resto and len(resto) > 1:
+        url = "https://www.google.com/search?q=" + urllib.parse.quote(resto)
+        webbrowser.open(url)
+        return "Buscando \"%s\" en tu navegador." % resto
+
+    return None
 
 
 def abrir_programa(nombre):
@@ -759,6 +900,29 @@ def abrir_programa(nombre):
         if k in nombre:
             clave = k
             break
+
+    # Difuso: por si escribiste "calculadra", "whatsap", "yotube"...
+    if clave is None:
+        toks = [sin_acentos(x) for x in nombre.split()]
+        mejor_web, mejor_web_r = None, 0.0
+        for k in WEBS:
+            for tok in toks:
+                r = _parecido(tok, sin_acentos(k))
+                if r > mejor_web_r:
+                    mejor_web_r, mejor_web = r, k
+        mejor_prog, mejor_prog_r = None, 0.0
+        for k in PROGRAMAS:
+            r = _parecido(sin_acentos(nombre), sin_acentos(k))
+            for tok in toks:
+                r = max(r, _parecido(tok, sin_acentos(k)))
+            if r > mejor_prog_r:
+                mejor_prog_r, mejor_prog = r, k
+        if mejor_web_r >= 0.8 and mejor_web_r >= mejor_prog_r:
+            webbrowser.open(WEBS[mejor_web])
+            return "Abriendo %s. Que no se diga que no te consiento." % mejor_web
+        if mejor_prog_r >= 0.8:
+            clave = mejor_prog
+
     if clave is None:
         # Intenta abrirlo tal cual (por si es un programa instalado).
         objetivo = nombre.split()[0] if nombre else ""
@@ -1355,7 +1519,8 @@ class Jarvis:
     def _maybe_clima(self, texto):
         """Detecta 'clima' / 'tiempo en <ciudad>' y lo consulta (sin clave)."""
         t = texto.lower()
-        if not re.search(r"\bclima\b|\bel tiempo\b|que tiempo|temperatura", t):
+        if not (re.search(r"\bclima\b|\bel tiempo\b|que tiempo|temperatura", t)
+                or fuzzy_contiene(t, ["clima", "temperatura"])):
             return False
         m = re.search(r"\b(?:en|de)\s+(.+)", t)
         ciudad = ""

@@ -85,7 +85,15 @@ derecho → Pegar).
 - Funciona con el reconocimiento nativo de Windows **sin instalar nada**.
 - Para la **mejor calidad** (reconocimiento por Google, muy bueno en español),
   en CMD: `pip install SpeechRecognition pyaudio` y reinicia Jarvis.
+  Jarvis calibra el ruido de fondo y elige la mejor interpretación.
 - La barra de estado de abajo te dice si el micro está listo.
+
+## 🧩 Te entiende aunque te equivoques
+
+Jarvis tiene **reconocimiento tolerante a erratas**: si escribes o dices
+*"ke ora es"*, *"cuentame un chizte"*, *"avre la calculadora"*, *"abre whatsap"*
+o *"suve el volumen"*, igual te entiende. Y si de verdad no es un comando,
+se lo pasa a la IA sin molestarte.
 
 ## ❓ Problemas
 
