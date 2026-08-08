@@ -217,9 +217,15 @@ class Microfono:
         self.sr = None
         try:
             import speech_recognition as sr
-            import pyaudio  # noqa: F401  (necesario para usar el microfono)
             self.sr = sr
-            self.metodo = "sr"
+            # Preferimos sounddevice: se instala facil (trae ruedas, no compila).
+            try:
+                import sounddevice  # noqa: F401
+                import numpy  # noqa: F401
+                self.metodo = "sounddevice"
+            except Exception:
+                import pyaudio  # noqa: F401  (captura clasica)
+                self.metodo = "sr"
         except Exception:
             if ES_WINDOWS:
                 self.metodo = "powershell"
@@ -228,18 +234,83 @@ class Microfono:
         return self.metodo != "ninguno"
 
     def como_activar(self):
-        return ("Para el microfono con la mejor calidad instala esto en CMD:\n"
-                "   pip install SpeechRecognition pyaudio\n"
-                "y reinicia Jarvis.")
+        return ("Para el microfono con la mejor calidad, en CMD escribe:\n"
+                "   py -m pip install SpeechRecognition sounddevice numpy\n"
+                "y reinicia Jarvis. (No uses pipwin: falla en Python nuevo.)")
 
     def escuchar(self):
         """Bloqueante. Devuelve el texto reconocido, o marcadores:
         '' = no entendio, '__error__' = fallo, '__nomic__' = sin microfono."""
+        if self.metodo == "sounddevice":
+            return self._escuchar_sounddevice()
         if self.metodo == "sr":
             return self._escuchar_sr()
         if self.metodo == "powershell":
             return self._escuchar_powershell()
         return "__nomic__"
+
+    def _transcribir(self, audio_data):
+        """Manda el audio a Google y devuelve la mejor transcripcion."""
+        sr = self.sr
+        r = sr.Recognizer()
+        try:
+            resp = r.recognize_google(audio_data, language="es-ES", show_all=True)
+        except sr.UnknownValueError:
+            return ""
+        except Exception:
+            return "__error__"
+        if not resp:
+            return ""
+        alternativas = resp.get("alternative", []) if isinstance(resp, dict) else []
+        if not alternativas:
+            return ""
+        mejor = max(alternativas,
+                    key=lambda a: a.get("confidence", 0)) if any(
+                        "confidence" in a for a in alternativas) else alternativas[0]
+        return (mejor.get("transcript") or "").strip()
+
+    def _escuchar_sounddevice(self):
+        """Graba del microfono con sounddevice, cortando cuando dejas de hablar."""
+        import numpy as np
+        import sounddevice as sd
+        fs = 16000
+        try:
+            # Calibracion del ruido de fondo (0.4 s).
+            amb = sd.rec(int(0.4 * fs), samplerate=fs, channels=1, dtype="int16")
+            sd.wait()
+            base = float(np.abs(amb).mean()) + 60
+            umbral = max(base * 2.2, 350)
+
+            frames = []
+            silencio = 0.0
+            empezo = False
+            total = 0.0
+            bloque = int(0.1 * fs)
+            stream = sd.InputStream(samplerate=fs, channels=1, dtype="int16")
+            stream.start()
+            while total < 13:  # tope de 13 s por si acaso
+                datos, _ = stream.read(bloque)
+                total += 0.1
+                frames.append(datos.copy())
+                amp = float(np.abs(datos).mean())
+                if amp > umbral:
+                    empezo = True
+                    silencio = 0.0
+                elif empezo:
+                    silencio += 0.1
+                    if silencio > 0.9:   # 0.9 s callado = fin de la frase
+                        break
+                elif total > 6:          # nunca empezaste a hablar
+                    break
+            stream.stop()
+            stream.close()
+        except Exception:
+            return "__nomic__"
+        if not empezo:
+            return ""
+        audio = np.concatenate(frames).tobytes()
+        datos_audio = self.sr.AudioData(audio, fs, 2)
+        return self._transcribir(datos_audio)
 
     def _escuchar_sr(self):
         sr = self.sr
@@ -255,23 +326,7 @@ class Microfono:
                 audio = r.listen(fuente, timeout=7, phrase_time_limit=15)
         except Exception:
             return "__nomic__"
-        # Pedimos varias alternativas y nos quedamos con la de mas confianza.
-        try:
-            resp = r.recognize_google(audio, language="es-ES", show_all=True)
-        except sr.UnknownValueError:
-            return ""
-        except Exception:
-            return "__error__"
-        if not resp:
-            return ""
-        alternativas = resp.get("alternative", []) if isinstance(resp, dict) else []
-        if not alternativas:
-            return ""
-        # La primera suele ser la mejor; si trae 'confidence' elegimos la mayor.
-        mejor = max(alternativas,
-                    key=lambda a: a.get("confidence", 0)) if any(
-                        "confidence" in a for a in alternativas) else alternativas[0]
-        return (mejor.get("transcript") or "").strip()
+        return self._transcribir(audio)
 
     def _escuchar_powershell(self):
         script = (

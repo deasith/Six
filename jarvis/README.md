@@ -84,8 +84,10 @@ derecho → Pegar).
 - Pulsa **"🎤 Hablar"**, di tu frase y Jarvis la escribe y responde solo.
 - Funciona con el reconocimiento nativo de Windows **sin instalar nada**.
 - Para la **mejor calidad** (reconocimiento por Google, muy bueno en español),
-  en CMD: `pip install SpeechRecognition pyaudio` y reinicia Jarvis.
-  Jarvis calibra el ruido de fondo y elige la mejor interpretación.
+  en CMD: `py -m pip install SpeechRecognition sounddevice numpy` y reinicia
+  Jarvis. (`sounddevice` se instala fácil, sin compilar como pyaudio.)
+  Jarvis calibra el ruido de fondo y corta cuando dejas de hablar.
+  ⚠️ No uses `pipwin`: falla en las versiones nuevas de Python.
 - La barra de estado de abajo te dice si el micro está listo.
 
 ## 🧩 Te entiende aunque te equivoques
