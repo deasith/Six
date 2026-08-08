@@ -215,6 +215,54 @@ PROGRAMAS = {
     "spotify": "spotify", "configuracion": "ms-settings:", "ajustes": "ms-settings:",
 }
 
+# Paginas web que Jarvis puede abrir por su nombre ("abre gmail").
+WEBS = {
+    "gmail": "https://mail.google.com", "correo": "https://mail.google.com",
+    "whatsapp": "https://web.whatsapp.com",
+    "youtube": "https://www.youtube.com", "yt": "https://www.youtube.com",
+    "maps": "https://maps.google.com", "mapas": "https://maps.google.com",
+    "traductor": "https://translate.google.com",
+    "instagram": "https://www.instagram.com", "insta": "https://www.instagram.com",
+    "facebook": "https://www.facebook.com", "twitter": "https://twitter.com",
+    "x": "https://twitter.com", "tiktok": "https://www.tiktok.com",
+    "netflix": "https://www.netflix.com", "twitch": "https://www.twitch.tv",
+    "github": "https://github.com", "chatgpt": "https://chat.openai.com",
+    "wikipedia": "https://es.wikipedia.org", "amazon": "https://www.amazon.com",
+    "reddit": "https://www.reddit.com", "gmail com": "https://mail.google.com",
+}
+
+# Chistes cortos para cuando no hay clave de IA (funcionan sin internet).
+CHISTES = [
+    "Va un pinguino andando por el desierto y dice: cuanta caspa.",
+    "Que le dice un jardinero a otro? Disculpa, nos vemos las plantas.",
+    "Como se dice pañuelo en japones? Saka-moko.",
+    "Que hace una abeja en el gimnasio? Zum-ba.",
+    "Tengo un chiste sobre el wifi, pero no se si va a conectar contigo.",
+    "Un cero le dice a un ocho: bonito cinturon.",
+    "Que le dice un semaforo a otro? No me mires que me pongo rojo.",
+    "Me tome una pastilla para la memoria... aunque ya no me acuerdo para que.",
+]
+
+
+def habilitar_menu_edicion(widget):
+    """Anade clic derecho con Cortar/Copiar/Pegar a una caja de texto.
+    Asi el usuario puede pegar la clave sin escribirla letra por letra."""
+    menu = tk.Menu(widget, tearoff=0)
+    menu.add_command(label="Cortar",
+                     command=lambda: widget.event_generate("<<Cut>>"))
+    menu.add_command(label="Copiar",
+                     command=lambda: widget.event_generate("<<Copy>>"))
+    menu.add_command(label="Pegar",
+                     command=lambda: widget.event_generate("<<Paste>>"))
+
+    def mostrar(evento):
+        try:
+            menu.tk_popup(evento.x_root, evento.y_root)
+        finally:
+            menu.grab_release()
+
+    widget.bind("<Button-3>", mostrar)
+
 
 def comando_local(texto):
     """Devuelve una respuesta si el texto es un comando rapido, o None
@@ -231,13 +279,19 @@ def comando_local(texto):
         return "Hoy es %s %d de %s de %d." % (
             DIAS[hoy.weekday()], hoy.day, MESES[hoy.month - 1], hoy.year)
 
-    # --- Abrir programas ---
-    m = re.search(r"\b(abre|abrir|inicia|iniciar|ejecuta|lanza)\b\s+(.+)", t)
+    # --- Abrir programas y paginas web ---
+    m = re.search(r"\b(abre|abrir|inicia|iniciar|ejecuta|lanza|entra a|ve a)\b\s+(.+)", t)
     if m:
         objetivo = m.group(2).strip().strip(".!?")
-        # quita "el/la/mi" del principio
-        objetivo = re.sub(r"^(el|la|mi|un|una)\s+", "", objetivo)
+        # quita "el/la/mi/la pagina" del principio
+        objetivo = re.sub(r"^(el|la|mi|un|una|la pagina|la web|el sitio)\s+", "",
+                          objetivo)
         return abrir_programa(objetivo)
+
+    # --- Chistes (sin internet) ---
+    if re.search(r"\bchiste\b|cuentame algo gracioso|hazme reir", t):
+        import random
+        return random.choice(CHISTES)
 
     # --- Buscar en la web ---
     m = re.search(r"\b(busca|buscar|google|googlea|investiga)\b\s+(.+)", t)
@@ -280,16 +334,29 @@ def comando_local(texto):
 
     # --- Ayuda ---
     if re.fullmatch(r"(ayuda|help|comandos|que puedes hacer)\W*", t):
-        return ("Puedo: decirte la hora y la fecha, abrir programas "
-                "(\"abre la calculadora\"), buscar en la web (\"busca gatos\"), "
-                "poner videos (\"pon musica en youtube\"), calcular "
-                "(\"cuanto es 8*7\") y, si pones tu clave de IA, responder "
-                "cualquier pregunta.")
+        return ("Esto es lo que se hacer sin despeinarme:\n"
+                "• Hora y fecha: \"que hora es\", \"que dia es hoy\"\n"
+                "• Abrir programas: \"abre la calculadora\", \"abre el bloc de notas\"\n"
+                "• Abrir webs: \"abre gmail\", \"abre whatsapp\", \"abre youtube\"\n"
+                "• Buscar: \"busca recetas de pizza\"\n"
+                "• Videos: \"pon musica relajante en youtube\"\n"
+                "• Clima: \"clima\" o \"clima en Madrid\"\n"
+                "• Recordatorios: \"recuerdame en 10 minutos sacar la pizza\"\n"
+                "• Calcular: \"cuanto es 8*7\"\n"
+                "• Chistes: \"cuentame un chiste\"\n"
+                "Y con mi clave de IA puesta, te respondo cualquier cosa con mi "
+                "encanto habitual.")
 
     return None  # -> lo maneja la IA
 
 
 def abrir_programa(nombre):
+    # Primero, paginas web conocidas ("abre gmail").
+    for k in WEBS:
+        if re.search(r"\b" + re.escape(k) + r"\b", nombre):
+            webbrowser.open(WEBS[k])
+            return "Abriendo %s. Que no se diga que no te consiento." % k
+
     clave = None
     for k in PROGRAMAS:
         if k in nombre:
@@ -454,6 +521,7 @@ class Jarvis:
             insertbackground=ACENTO)
         self.entrada.pack(side="left", fill="x", expand=True, ipady=8, padx=(0, 8))
         self.entrada.bind("<Return>", lambda e: self.enviar())
+        habilitar_menu_edicion(self.entrada)  # clic derecho -> Pegar/Copiar
         self.entrada.focus_set()
 
         self.btn_enviar = tk.Button(
@@ -543,17 +611,37 @@ class Jarvis:
         top = tk.Toplevel(self.ventana)
         top.title("Clave de IA (Groq)")
         top.configure(bg=FONDO)
-        top.geometry("520x230")
+        top.geometry("560x300")
         top.transient(self.ventana)
         tk.Label(top, text="Pega tu clave gratis de Groq:", bg=FONDO, fg=TEXTO,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=18, pady=(18, 6))
-        entrada = tk.Entry(top, bg=PANEL, fg=TEXTO, relief="flat",
+
+        fila_clave = tk.Frame(top, bg=FONDO)
+        fila_clave.pack(fill="x", padx=18)
+        entrada = tk.Entry(fila_clave, bg=PANEL, fg=TEXTO, relief="flat",
                            font=("Consolas", 11), insertbackground=ACENTO)
-        entrada.pack(fill="x", padx=18, ipady=6)
+        entrada.pack(side="left", fill="x", expand=True, ipady=6)
         entrada.insert(0, self.config.get("api_key", ""))
-        tk.Label(top, text="Es gratis y sin tarjeta: entra a console.groq.com, "
-                           "crea una cuenta,\nve a \"API Keys\" y crea una. "
-                           "Luego pegala aqui.",
+        habilitar_menu_edicion(entrada)  # clic derecho -> Pegar
+
+        def pegar():
+            # Pega la clave del portapapeles de un solo golpe.
+            try:
+                texto = self.ventana.clipboard_get()
+            except Exception:
+                self.msg_sistema("El portapapeles esta vacio. Copia la clave "
+                                 "primero (Ctrl+C en la web de Groq).")
+                return
+            entrada.delete(0, "end")
+            entrada.insert(0, texto.strip())
+
+        tk.Button(fila_clave, text="📋 Pegar", command=pegar,
+                  bg=ACENTO2, fg=TEXTO, relief="flat", font=("Segoe UI", 10, "bold"),
+                  padx=12, pady=4, cursor="hand2").pack(side="left", padx=(8, 0))
+
+        tk.Label(top, text="Es gratis y sin tarjeta: entra a console.groq.com, crea "
+                           "una cuenta,\nve a \"API Keys\", crea una y COPIALA "
+                           "(Ctrl+C). Aqui pulsa \"📋 Pegar\".",
                  bg=FONDO, fg=TEXTO_TENUE, justify="left",
                  font=("Segoe UI", 9)).pack(anchor="w", padx=18, pady=10)
 
@@ -561,12 +649,16 @@ class Jarvis:
             self.config["api_key"] = limpiar_clave_api(entrada.get())
             guardar_config(self.config)
             top.destroy()
-            self.msg_jarvis("Clave guardada. Ya puedo responder cualquier pregunta.",
-                            hablar=False)
+            if self.config["api_key"]:
+                self.msg_jarvis("Clave guardada. Cerebro conectado. Ahora si, "
+                                "preguntame lo que quieras.", hablar=False)
+            else:
+                self.msg_sistema("No pegaste ninguna clave. Cuando la tengas, "
+                                 "vuelve a pulsar \"🔑 Clave IA\".")
 
         fila = tk.Frame(top, bg=FONDO)
-        fila.pack(pady=8)
-        tk.Button(fila, text="Abrir Groq", command=lambda: webbrowser.open(
+        fila.pack(pady=12)
+        tk.Button(fila, text="🌐 Abrir Groq", command=lambda: webbrowser.open(
             "https://console.groq.com/keys"),
             bg=PANEL, fg=TEXTO, relief="flat", font=("Segoe UI", 10, "bold"),
             padx=14, pady=6, cursor="hand2").pack(side="left", padx=6)
@@ -581,6 +673,12 @@ class Jarvis:
         self.entrada.delete(0, "end")
         self.msg_tu(texto)
         self.historial.append({"role": "user", "content": texto})
+
+        # 0) Funciones que necesitan tiempo o internet (clima, recordatorios).
+        if self._maybe_recordatorio(texto):
+            return
+        if self._maybe_clima(texto):
+            return
 
         # 1) Comandos rapidos (instantaneos, sin internet)
         respuesta = comando_local(texto)
@@ -604,6 +702,73 @@ class Jarvis:
         self.btn_enviar.config(state="disabled", text="Pensando…")
         self.msg_sistema("Jarvis esta pensando…")
         threading.Thread(target=self._pensar, daemon=True).start()
+
+    def _maybe_recordatorio(self, texto):
+        """Detecta 'recuerdame en N minutos/horas ...' y programa un aviso."""
+        t = texto.lower()
+        if not re.search(r"recu[eé]rdame|recuerdame|av[ií]same|avisame|"
+                         r"alarma|temporizador|recordatorio", t):
+            return False
+        m = re.search(r"en\s+(\d+)\s*(segundos?|seg|minutos?|min|horas?|h)\b", t)
+        if not m:
+            self.msg_jarvis("Dime cuanto falta, algo como \"recuerdame en 10 "
+                            "minutos sacar la pizza\". No leo mentes... todavia.")
+            return True
+        cantidad = int(m.group(1))
+        unidad = m.group(2)
+        if unidad.startswith(("segundo", "seg")):
+            segundos, nombre = cantidad, "segundos"
+        elif unidad.startswith("h"):
+            segundos, nombre = cantidad * 3600, "horas"
+        else:
+            segundos, nombre = cantidad * 60, "minutos"
+        # El texto del recordatorio es lo que va despues de "que" o del tiempo.
+        resto = texto[m.end():].strip()
+        resto = re.sub(r"^(que|de|a)\s+", "", resto, flags=re.IGNORECASE).strip()
+        asunto = resto if resto else "tu recordatorio"
+
+        def avisar():
+            aviso = "¡RECORDATORIO! Toca: %s" % asunto
+            self.msg_jarvis(aviso)
+            try:
+                self.ventana.deiconify()
+                self.ventana.lift()
+                self.ventana.attributes("-topmost", True)
+                self.ventana.after(2500,
+                                   lambda: self.ventana.attributes("-topmost", False))
+            except Exception:
+                pass
+
+        self.ventana.after(segundos * 1000, avisar)
+        self.msg_jarvis("Hecho. Te aviso en %d %s sobre: %s. No se me olvida, "
+                        "que para eso soy una maquina." % (cantidad, nombre, asunto))
+        return True
+
+    def _maybe_clima(self, texto):
+        """Detecta 'clima' / 'tiempo en <ciudad>' y lo consulta (sin clave)."""
+        t = texto.lower()
+        if not re.search(r"\bclima\b|\bel tiempo\b|que tiempo|temperatura", t):
+            return False
+        m = re.search(r"\b(?:en|de)\s+(.+)", t)
+        ciudad = ""
+        if m:
+            ciudad = m.group(1).strip().strip(".!?")
+        self.msg_sistema("Consultando el clima…")
+        threading.Thread(target=self._clima_hilo, args=(ciudad,), daemon=True).start()
+        return True
+
+    def _clima_hilo(self, ciudad):
+        destino = urllib.parse.quote(ciudad) if ciudad else ""
+        url = "https://wttr.in/%s?format=%%l:+%%C+%%t+(sensacion+%%f)&lang=es" % destino
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "curl/8"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                info = resp.read().decode("utf-8", errors="ignore").strip()
+            respuesta = "El clima ahora: %s." % info
+        except Exception:
+            respuesta = ("No pude consultar el clima. O no hay internet, o esa "
+                         "ciudad no existe (o la escribiste raro).")
+        self.ventana.after(0, self._mostrar_respuesta, respuesta)
 
     def _pensar(self):
         try:

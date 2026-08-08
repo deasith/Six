@@ -36,12 +36,22 @@ Sin clave, Jarvis igual funciona con sus comandos rápidos.
 | `qué hora es` | te dice la hora |
 | `qué día es hoy` | te dice la fecha |
 | `abre la calculadora` | abre programas (calculadora, bloc de notas, navegador, paint, cmd, explorador…) |
+| `abre gmail` / `abre whatsapp` | abre webs (gmail, whatsapp, youtube, maps, netflix, instagram…) |
 | `busca recetas de pizza` | busca en Google |
 | `pon música relajante en youtube` | abre YouTube |
+| `clima` o `clima en Madrid` | te dice el tiempo (sin clave) |
+| `recuérdame en 10 minutos sacar la pizza` | te avisa cuando toca |
 | `cuánto es 8 * 7` | calcula |
+| `cuéntame un chiste` | chiste al instante |
 | `explícame los agujeros negros` | responde con IA (necesita clave) |
 | `ayuda` | lista de lo que puede hacer |
 | `adiós` | se cierra |
+
+## 🔑 Poner la clave de IA (con botón Pegar)
+
+En **"🔑 Clave IA"** ya no hace falta escribirla letra por letra: copia la
+clave en la web de Groq (Ctrl+C) y en la app pulsa **"📋 Pegar"** (o clic
+derecho → Pegar).
 
 ## 🔊 Voz
 
