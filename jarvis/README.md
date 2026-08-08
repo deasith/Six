@@ -47,6 +47,26 @@ Sin clave, Jarvis igual funciona con sus comandos rápidos.
 | `ayuda` | lista de lo que puede hacer |
 | `adiós` | se cierra |
 
+## 🖥️ Conocimiento y acceso a tu PC
+
+Jarvis ahora "conoce" tu equipo y puede acceder a cosas (de forma segura):
+
+| Escribes… | Jarvis hace… |
+|---|---|
+| `info del sistema` | resumen: equipo, RAM, disco, batería, IP |
+| `cuánta batería` · `cuánto espacio` · `cuánta ram` · `mi ip` | datos concretos |
+| `qué consume mi pc` | programas que más memoria usan |
+| `abre la carpeta descargas` | abre carpetas (escritorio, documentos, descargas, imágenes, música, vídeos) |
+| `busca el archivo factura` → `abre el 1` | busca archivos en tus carpetas y los abre por número |
+| `sube el volumen` · `baja el volumen` · `silencia` | control de volumen |
+| `bloquea la pantalla` | bloquea Windows |
+
+Además, cuando la IA está activa, **ya sabe** tu sistema, hora, batería y disco,
+así que responde teniéndolo en cuenta.
+
+> 🔒 **Seguridad:** Jarvis solo puede hacer estas acciones concretas. La IA
+> **no** ejecuta comandos sueltos en tu PC, así que no puede romper nada.
+
 ## 🔑 Poner la clave de IA (con botón Pegar)
 
 En **"🔑 Clave IA"** ya no hace falta escribirla letra por letra: copia la

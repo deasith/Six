@@ -23,10 +23,13 @@ Voz (opcional, mejor calidad):
 
 import datetime
 import json
+import getpass
 import os
 import platform
 import queue
 import re
+import shutil
+import socket
 import ssl
 import subprocess
 import threading
@@ -244,6 +247,264 @@ CHISTES = [
 ]
 
 
+# ============================================================================
+# CONOCIMIENTO Y ACCESO AL PC
+# Un conjunto ACOTADO de acciones seguras: informar, abrir, buscar, controlar
+# volumen, bloquear. No se ejecutan comandos arbitrarios de la IA.
+# ============================================================================
+
+def _bytes_a_gb(n):
+    return n / (1024 ** 3)
+
+
+def info_bateria():
+    """Devuelve (porcentaje, enchufado) usando la API nativa de Windows.
+    porcentaje puede ser None si el equipo no tiene bateria."""
+    if not ES_WINDOWS:
+        return None, None
+    try:
+        import ctypes
+
+        class SPS(ctypes.Structure):
+            _fields_ = [("ACLineStatus", ctypes.c_byte),
+                        ("BatteryFlag", ctypes.c_byte),
+                        ("BatteryLifePercent", ctypes.c_byte),
+                        ("SystemStatusFlag", ctypes.c_byte),
+                        ("BatteryLifeTime", ctypes.c_ulong),
+                        ("BatteryFullLifeTime", ctypes.c_ulong)]
+
+        estado = SPS()
+        if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(estado)):
+            return None, None
+        pct = estado.BatteryLifePercent
+        if pct == 255:
+            pct = None
+        enchufado = estado.ACLineStatus == 1
+        return pct, enchufado
+    except Exception:
+        return None, None
+
+
+def info_ram():
+    """Devuelve (total_gb, usada_gb, porcentaje) de la memoria RAM."""
+    if ES_WINDOWS:
+        try:
+            import ctypes
+
+            class MEM(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong),
+                            ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong),
+                            ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong),
+                            ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong),
+                            ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+            m = MEM()
+            m.dwLength = ctypes.sizeof(m)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+            total = _bytes_a_gb(m.ullTotalPhys)
+            usada = _bytes_a_gb(m.ullTotalPhys - m.ullAvailPhys)
+            return total, usada, m.dwMemoryLoad
+        except Exception:
+            pass
+    return None, None, None
+
+
+def info_disco():
+    """Espacio del disco principal: (total_gb, libre_gb, porcentaje_usado)."""
+    ruta = "C:\\" if ES_WINDOWS else "/"
+    try:
+        u = shutil.disk_usage(ruta)
+        total = _bytes_a_gb(u.total)
+        libre = _bytes_a_gb(u.free)
+        pct = round((u.used / u.total) * 100)
+        return total, libre, pct
+    except Exception:
+        return None, None, None
+
+
+def ip_local():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "desconocida"
+
+
+def carpetas_usuario():
+    """Rutas de las carpetas conocidas del usuario."""
+    home = os.path.expanduser("~")
+    perfil = os.environ.get("USERPROFILE", home)
+    return {
+        "escritorio": os.path.join(perfil, "Desktop"),
+        "documentos": os.path.join(perfil, "Documents"),
+        "descargas": os.path.join(perfil, "Downloads"),
+        "imagenes": os.path.join(perfil, "Pictures"),
+        "fotos": os.path.join(perfil, "Pictures"),
+        "musica": os.path.join(perfil, "Music"),
+        "videos": os.path.join(perfil, "Videos"),
+        "casa": perfil, "inicio": perfil, "mi pc": perfil,
+    }
+
+
+def resumen_sistema():
+    """Texto con el estado del equipo (para mostrar al usuario)."""
+    partes = []
+    try:
+        usuario = getpass.getuser()
+    except Exception:
+        usuario = os.environ.get("USERNAME", "usuario")
+    equipo = platform.node() or socket.gethostname()
+    partes.append("Equipo: %s   Usuario: %s" % (equipo, usuario))
+    partes.append("Sistema: %s %s" % (platform.system(), platform.release()))
+
+    total, usada, pct = info_ram()
+    if total:
+        partes.append("RAM: %.1f GB usados de %.1f GB (%d%%)" % (usada, total, pct))
+
+    dt, dl, dpct = info_disco()
+    if dt:
+        partes.append("Disco: %.0f GB libres de %.0f GB (%d%% ocupado)" %
+                      (dl, dt, dpct))
+
+    bat, enchufado = info_bateria()
+    if bat is not None:
+        estado = "cargando" if enchufado else "con bateria"
+        partes.append("Bateria: %d%% (%s)" % (bat, estado))
+
+    partes.append("CPU: %d nucleos   IP local: %s" %
+                  (os.cpu_count() or 0, ip_local()))
+    return "\n".join(partes)
+
+
+def contexto_para_ia():
+    """Resumen breve del equipo que se le da a la IA para que 'conozca' el PC."""
+    try:
+        usuario = getpass.getuser()
+    except Exception:
+        usuario = os.environ.get("USERNAME", "usuario")
+    ahora = datetime.datetime.now()
+    datos = ["Sistema: %s %s" % (platform.system(), platform.release()),
+             "Usuario: %s" % usuario,
+             "Fecha y hora actual: %s" % ahora.strftime("%A %d/%m/%Y %H:%M")]
+    bat, ench = info_bateria()
+    if bat is not None:
+        datos.append("Bateria: %d%%%s" % (bat, " (cargando)" if ench else ""))
+    dt, dl, _ = info_disco()
+    if dt:
+        datos.append("Disco libre: %.0f GB" % dl)
+    return " | ".join(datos)
+
+
+def procesos_top(limite=6):
+    """Programas que mas memoria consumen (solo Windows, con tasklist)."""
+    if not ES_WINDOWS:
+        return "Esta funcion es solo para Windows."
+    try:
+        salida = subprocess.run(["tasklist", "/fo", "csv", "/nh"],
+                                 capture_output=True, text=True, timeout=15).stdout
+    except Exception:
+        return "No pude leer los procesos."
+    uso = {}
+    for linea in salida.splitlines():
+        campos = [c.strip('"') for c in linea.split('","')]
+        if len(campos) < 5:
+            continue
+        nombre = campos[0].replace('"', '')
+        mem = re.sub(r"[^\d]", "", campos[4])
+        if mem:
+            uso[nombre] = uso.get(nombre, 0) + int(mem)  # KB
+    if not uso:
+        return "No pude leer los procesos."
+    top = sorted(uso.items(), key=lambda x: x[1], reverse=True)[:limite]
+    lineas = ["Lo que mas memoria usa ahora:"]
+    for nombre, kb in top:
+        lineas.append("• %s: %.0f MB" % (nombre, kb / 1024))
+    return "\n".join(lineas)
+
+
+def control_volumen(accion):
+    """Sube, baja o silencia el volumen usando teclas multimedia (Windows)."""
+    if not ES_WINDOWS:
+        return "El control de volumen es solo para Windows."
+    teclas = {"subir": 175, "bajar": 174, "silenciar": 173}
+    codigo = teclas.get(accion)
+    if codigo is None:
+        return None
+    veces = 1 if accion == "silenciar" else 5  # 5 pasos = un cambio notable
+    try:
+        script = ("$w = New-Object -ComObject WScript.Shell; "
+                  "for ($i=0; $i -lt %d; $i++) "
+                  "{ $w.SendKeys([char]%d) }" % (veces, codigo))
+        subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=10)
+        frases = {"subir": "Volumen arriba.", "bajar": "Volumen abajo.",
+                  "silenciar": "Silencio (o de vuelta el sonido)."}
+        return frases[accion]
+    except Exception:
+        return "No pude cambiar el volumen."
+
+
+def bloquear_pc():
+    if not ES_WINDOWS:
+        return "Bloquear la pantalla es solo para Windows."
+    try:
+        subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"], timeout=10)
+        return "Pantalla bloqueada. Nos vemos a la vuelta."
+    except Exception:
+        return "No pude bloquear la pantalla."
+
+
+def buscar_archivos(termino, limite=12):
+    """Busca archivos cuyo nombre contenga 'termino' en las carpetas del
+    usuario (escritorio, documentos, descargas, imagenes, musica, videos)."""
+    termino = termino.lower().strip()
+    if not termino:
+        return []
+    raices = []
+    vistas = set()
+    for ruta in carpetas_usuario().values():
+        if ruta not in vistas and os.path.isdir(ruta):
+            vistas.add(ruta)
+            raices.append(ruta)
+    encontrados = []
+    for raiz in raices:
+        for carpeta, _dirs, archivos in os.walk(raiz):
+            # No bajar demasiado hondo para que sea rapido.
+            if carpeta[len(raiz):].count(os.sep) > 3:
+                _dirs[:] = []
+                continue
+            for a in archivos:
+                if termino in a.lower():
+                    encontrados.append(os.path.join(carpeta, a))
+                    if len(encontrados) >= limite:
+                        return encontrados
+    return encontrados
+
+
+def abrir_ruta(ruta):
+    try:
+        if ES_WINDOWS:
+            os.startfile(ruta)  # type: ignore[attr-defined]
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", ruta])
+        else:
+            subprocess.Popen(["xdg-open", ruta])
+        return True
+    except Exception:
+        return False
+
+
 def habilitar_menu_edicion(widget):
     """Anade clic derecho con Cortar/Copiar/Pegar a una caja de texto.
     Asi el usuario puede pegar la clave sin escribirla letra por letra."""
@@ -293,6 +554,51 @@ def comando_local(texto):
         import random
         return random.choice(CHISTES)
 
+    # --- Conocimiento del PC ---
+    if re.search(r"info del sistema|como esta mi (pc|computadora|ordenador)|"
+                 r"estado del (pc|sistema|equipo)|informacion del (pc|sistema)|"
+                 r"como estas de (memoria|recursos)", t):
+        return resumen_sistema()
+
+    if re.search(r"\bbateria\b|\bpila\b|cuanta carga", t):
+        pct, ench = info_bateria()
+        if pct is None:
+            return "No detecto bateria (o eres un PC de mesa, campeon)."
+        extra = " y esta cargando" if ench else ""
+        aviso = "" if pct > 20 else " Enchufa eso ya, que se muere."
+        return "Bateria al %d%%%s.%s" % (pct, extra, aviso)
+
+    if re.search(r"cuanta (memoria|ram)|uso de (memoria|ram)|\bla ram\b", t):
+        total, usada, pct = info_ram()
+        if total:
+            return "RAM: %.1f GB usados de %.1f GB (%d%%)." % (usada, total, pct)
+        return "No pude leer la memoria."
+
+    if re.search(r"cuanto espacio|espacio (libre|en disco)|\bel disco\b|"
+                 r"almacenamiento", t):
+        dt, dl, dpct = info_disco()
+        if dt:
+            return "Disco: %.0f GB libres de %.0f GB (%d%% ocupado)." % (
+                dl, dt, dpct)
+        return "No pude leer el disco."
+
+    if re.search(r"\bmi ip\b|que ip tengo|direccion ip", t):
+        return "Tu IP local es %s." % ip_local()
+
+    if re.search(r"que programas|que esta abierto|que consume|uso de cpu|"
+                 r"procesos|que ralentiza", t):
+        return procesos_top()
+
+    # --- Control del PC ---
+    if re.search(r"sube (el )?volumen|mas (alto|volumen)|mas fuerte", t):
+        return control_volumen("subir")
+    if re.search(r"baja (el )?volumen|menos (alto|volumen)|mas bajo", t):
+        return control_volumen("bajar")
+    if re.search(r"silencia|mutea|quita el sonido|sin sonido", t):
+        return control_volumen("silenciar")
+    if re.search(r"bloquea (la )?(pantalla|pc|sesion)|bloquear", t):
+        return bloquear_pc()
+
     # --- Buscar en la web ---
     m = re.search(r"\b(busca|buscar|google|googlea|investiga)\b\s+(.+)", t)
     if m:
@@ -338,20 +644,34 @@ def comando_local(texto):
                 "• Hora y fecha: \"que hora es\", \"que dia es hoy\"\n"
                 "• Abrir programas: \"abre la calculadora\", \"abre el bloc de notas\"\n"
                 "• Abrir webs: \"abre gmail\", \"abre whatsapp\", \"abre youtube\"\n"
-                "• Buscar: \"busca recetas de pizza\"\n"
-                "• Videos: \"pon musica relajante en youtube\"\n"
+                "• Abrir carpetas: \"abre la carpeta descargas\", \"abre documentos\"\n"
+                "• Buscar en la web: \"busca recetas de pizza\"\n"
+                "• Buscar archivos: \"busca el archivo factura\" y luego \"abre el 1\"\n"
+                "• Estado del PC: \"info del sistema\", \"cuanta bateria\", "
+                "\"cuanto espacio\", \"mi ip\", \"que consume mi pc\"\n"
+                "• Controlar: \"sube el volumen\", \"silencia\", \"bloquea la pantalla\"\n"
                 "• Clima: \"clima\" o \"clima en Madrid\"\n"
-                "• Recordatorios: \"recuerdame en 10 minutos sacar la pizza\"\n"
-                "• Calcular: \"cuanto es 8*7\"\n"
-                "• Chistes: \"cuentame un chiste\"\n"
-                "Y con mi clave de IA puesta, te respondo cualquier cosa con mi "
-                "encanto habitual.")
+                "• Recordatorios: \"recuerdame en 10 minutos sacar la pizza\" o "
+                "\"a las 15:30 la reunion\"; \"mis recordatorios\"; \"cancela los recordatorios\"\n"
+                "• Calcular: \"cuanto es 8*7\"   • Chistes: \"cuentame un chiste\"\n"
+                "Y con mi clave de IA puesta, te respondo cualquier cosa (y ya "
+                "conozco los datos de tu equipo).")
 
     return None  # -> lo maneja la IA
 
 
 def abrir_programa(nombre):
-    # Primero, paginas web conocidas ("abre gmail").
+    # Primero, carpetas del usuario ("abre la carpeta descargas").
+    nombre_limpio = re.sub(r"^(carpeta|la carpeta)\s+", "", nombre).strip()
+    carpetas = carpetas_usuario()
+    for k in carpetas:
+        if re.search(r"\b" + re.escape(k) + r"\b", nombre_limpio):
+            if os.path.isdir(carpetas[k]):
+                abrir_ruta(carpetas[k])
+                return "Abriendo tu carpeta %s." % k
+            return "No encuentro la carpeta %s en su sitio de siempre." % k
+
+    # Paginas web conocidas ("abre gmail").
     for k in WEBS:
         if re.search(r"\b" + re.escape(k) + r"\b", nombre):
             webbrowser.open(WEBS[k])
@@ -426,7 +746,12 @@ def preguntar_ia(historial, clave_api):
                  "de texto. Si algo es obvio, puedes picarle un poco con humor. "
                  "Nunca eres borde ni ofensivo; el sarcasmo es de buen rollo. "
                  "De vez en cuando puedes rematar con una frase con estilo, como "
-                 "haria un asistente de peli de ciencia ficcion."}]
+                 "haria un asistente de peli de ciencia ficcion. "
+                 "Conoces el equipo del usuario; estos son sus datos ahora mismo: "
+                 + contexto_para_ia() +
+                 ". Si te preguntan por acciones del PC (abrir programas, buscar "
+                 "archivos, volumen, bateria, clima, recordatorios), recuerdales "
+                 "el comando exacto que pueden escribir."}]
     mensajes.extend({"role": m["role"], "content": m["content"]} for m in turnos)
     cuerpo = {
         "model": "llama-3.3-70b-versatile",
@@ -465,6 +790,8 @@ class Jarvis:
         self.voz = Voz()
         self.voz.activa = self.config.get("voz", True)
         self.historial = []
+        self.ultimos_archivos = []   # resultados de la ultima busqueda
+        self.recordatorios = []      # recordatorios pendientes
 
         self.ventana = tk.Tk()
         self.ventana.title("JARVIS")
@@ -674,10 +1001,15 @@ class Jarvis:
         self.msg_tu(texto)
         self.historial.append({"role": "user", "content": texto})
 
-        # 0) Funciones que necesitan tiempo o internet (clima, recordatorios).
+        # 0) Funciones que necesitan tiempo, internet o estado (archivos,
+        #    recordatorios, clima).
+        if self._maybe_abrir_resultado(texto):
+            return
         if self._maybe_recordatorio(texto):
             return
         if self._maybe_clima(texto):
+            return
+        if self._maybe_archivos(texto):
             return
 
         # 1) Comandos rapidos (instantaneos, sin internet)
@@ -704,32 +1036,81 @@ class Jarvis:
         threading.Thread(target=self._pensar, daemon=True).start()
 
     def _maybe_recordatorio(self, texto):
-        """Detecta 'recuerdame en N minutos/horas ...' y programa un aviso."""
+        """Recordatorios por tiempo ('en N minutos') u hora exacta ('a las
+        15:30'), ademas de listarlos y cancelarlos."""
         t = texto.lower()
         if not re.search(r"recu[eé]rdame|recuerdame|av[ií]same|avisame|"
                          r"alarma|temporizador|recordatorio", t):
             return False
-        m = re.search(r"en\s+(\d+)\s*(segundos?|seg|minutos?|min|horas?|h)\b", t)
-        if not m:
-            self.msg_jarvis("Dime cuanto falta, algo como \"recuerdame en 10 "
-                            "minutos sacar la pizza\". No leo mentes... todavia.")
+
+        # Listar pendientes
+        if re.search(r"\b(mis|que|cuales|lista|listar)\b.*recordatorio|"
+                     r"recordatorios? (tengo|pendientes|hay)", t):
+            pendientes = [r for r in self.recordatorios if not r["hecho"]]
+            if not pendientes:
+                self.msg_jarvis("No tienes recordatorios pendientes. Mente en paz.")
+            else:
+                lineas = ["Tus recordatorios pendientes:"]
+                for r in pendientes:
+                    lineas.append("• %s → %s" % (
+                        r["hora"].strftime("%H:%M"), r["asunto"]))
+                self.msg_jarvis("\n".join(lineas))
             return True
-        cantidad = int(m.group(1))
-        unidad = m.group(2)
-        if unidad.startswith(("segundo", "seg")):
-            segundos, nombre = cantidad, "segundos"
-        elif unidad.startswith("h"):
-            segundos, nombre = cantidad * 3600, "horas"
+
+        # Cancelar
+        if re.search(r"cancela|borra|elimina|olvida", t) and \
+                re.search(r"recordatorio|alarma|aviso", t):
+            n = len([r for r in self.recordatorios if not r["hecho"]])
+            for r in self.recordatorios:
+                r["hecho"] = True
+            self.msg_jarvis("Listo, cancele %d recordatorio(s). Como si nunca "
+                            "hubiera pasado." % n)
+            return True
+
+        ahora = datetime.datetime.now()
+        objetivo = None
+        # Opcion A: "a las HH:MM" (o "a las H")
+        m = re.search(r"a las?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|de la tarde|"
+                      r"de la noche|de la manana)?", t)
+        if m:
+            hh = int(m.group(1))
+            mm = int(m.group(2) or 0)
+            suf = m.group(3) or ""
+            if ("pm" in suf or "tarde" in suf or "noche" in suf) and hh < 12:
+                hh += 12
+            if "am" in suf and hh == 12:
+                hh = 0
+            objetivo = ahora.replace(hour=hh % 24, minute=mm, second=0, microsecond=0)
+            if objetivo <= ahora:
+                objetivo += datetime.timedelta(days=1)  # es para mañana
         else:
-            segundos, nombre = cantidad * 60, "minutos"
-        # El texto del recordatorio es lo que va despues de "que" o del tiempo.
+            # Opcion B: "en N segundos/minutos/horas"
+            m = re.search(r"en\s+(\d+)\s*(segundos?|seg|minutos?|min|horas?|h)\b", t)
+            if not m:
+                self.msg_jarvis("Dime cuando: \"recuerdame en 10 minutos sacar la "
+                                "pizza\" o \"recuerdame a las 15:30 la reunion\".")
+                return True
+            cant = int(m.group(1))
+            u = m.group(2)
+            if u.startswith(("segundo", "seg")):
+                objetivo = ahora + datetime.timedelta(seconds=cant)
+            elif u.startswith("h"):
+                objetivo = ahora + datetime.timedelta(hours=cant)
+            else:
+                objetivo = ahora + datetime.timedelta(minutes=cant)
+
         resto = texto[m.end():].strip()
-        resto = re.sub(r"^(que|de|a)\s+", "", resto, flags=re.IGNORECASE).strip()
+        resto = re.sub(r"^(que|de|a|para|sobre)\s+", "", resto,
+                       flags=re.IGNORECASE).strip()
         asunto = resto if resto else "tu recordatorio"
+        registro = {"hora": objetivo, "asunto": asunto, "hecho": False}
+        self.recordatorios.append(registro)
 
         def avisar():
-            aviso = "¡RECORDATORIO! Toca: %s" % asunto
-            self.msg_jarvis(aviso)
+            if registro["hecho"]:
+                return
+            registro["hecho"] = True
+            self.msg_jarvis("⏰ ¡RECORDATORIO! Toca: %s" % asunto)
             try:
                 self.ventana.deiconify()
                 self.ventana.lift()
@@ -739,10 +1120,67 @@ class Jarvis:
             except Exception:
                 pass
 
-        self.ventana.after(segundos * 1000, avisar)
-        self.msg_jarvis("Hecho. Te aviso en %d %s sobre: %s. No se me olvida, "
-                        "que para eso soy una maquina." % (cantidad, nombre, asunto))
+        segundos = max(1, (objetivo - ahora).total_seconds())
+        self.ventana.after(int(segundos * 1000), avisar)
+        self.msg_jarvis("Anotado. Te aviso a las %s sobre: %s. No se me olvida, "
+                        "que para eso soy una maquina." % (
+                            objetivo.strftime("%H:%M"), asunto))
         return True
+
+    def _maybe_abrir_resultado(self, texto):
+        """Abre un archivo de la ultima busqueda por su numero ('abre el 2')."""
+        m = re.fullmatch(r"(?:abre|abrir|abreme)\s*(?:el|la|numero|resultado|"
+                         r"archivo)?\s*(\d+)\W*", texto.lower().strip())
+        if not m or not self.ultimos_archivos:
+            return False
+        idx = int(m.group(1))
+        if 1 <= idx <= len(self.ultimos_archivos):
+            ruta = self.ultimos_archivos[idx - 1]
+            if abrir_ruta(ruta):
+                self.msg_jarvis("Abriendo %s." % os.path.basename(ruta))
+            else:
+                self.msg_jarvis("No pude abrir ese archivo. Que raro.")
+        else:
+            self.msg_jarvis("Ese numero no esta en la lista, listillo.")
+        return True
+
+    def _maybe_archivos(self, texto):
+        """Busca archivos por nombre en las carpetas del usuario."""
+        t = texto.lower()
+        if not re.search(r"\b(archivo|archivos|documento|documentos|fichero|"
+                         r"ficheros)\b", t):
+            return False
+        if not re.search(r"busca|buscar|encuentra|encontrar|localiza|abre|"
+                         r"abrir|donde esta|hay algun", t):
+            return False
+        m = re.search(r"(?:archivo|archivos|documento|documentos|fichero|"
+                      r"ficheros)\s+(?:llamado|con nombre|que se llame|que "
+                      r"diga|de|con|sobre)?\s*(.+)", t)
+        termino = ""
+        if m:
+            termino = m.group(1).strip().strip(".!?")
+            termino = re.sub(r"^(el|la|los|las|un|una|mi|mis)\s+", "", termino)
+        if not termino or len(termino) < 2:
+            self.msg_jarvis("Dime parte del nombre: \"busca el archivo factura\".")
+            return True
+        self.msg_sistema("Buscando en tus carpetas…")
+        threading.Thread(target=self._archivos_hilo, args=(termino,),
+                         daemon=True).start()
+        return True
+
+    def _archivos_hilo(self, termino):
+        resultados = buscar_archivos(termino)
+        if not resultados:
+            respuesta = ("No encontre archivos con \"%s\" en tu escritorio, "
+                         "documentos, descargas ni multimedia." % termino)
+        else:
+            self.ultimos_archivos = resultados
+            lineas = ["Encontre %d con \"%s\":" % (len(resultados), termino)]
+            for i, ruta in enumerate(resultados, 1):
+                lineas.append("%d. %s" % (i, os.path.basename(ruta)))
+            lineas.append("Escribe \"abre el 1\" (o el numero) para abrirlo.")
+            respuesta = "\n".join(lineas)
+        self.ventana.after(0, self._mostrar_respuesta, respuesta)
 
     def _maybe_clima(self, texto):
         """Detecta 'clima' / 'tiempo en <ciudad>' y lo consulta (sin clave)."""
