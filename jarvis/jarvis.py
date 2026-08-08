@@ -272,11 +272,11 @@ def comando_local(texto):
 
     # --- Saludos y despedidas rapidas ---
     if re.fullmatch(r"(hola|hey|buenas|hola jarvis|jarvis)\W*", t):
-        return "Hola. Soy Jarvis, tu asistente. Escribe lo que necesites."
+        return ("Hey. Aqui estoy, sin cafe pero con ganas. Dime que necesitas.")
     if re.search(r"\b(adios|hasta luego|chao|nos vemos|apagate|cierra)\b", t):
         return "__salir__"
     if re.search(r"\b(gracias|muchas gracias)\b", t):
-        return "De nada. Para eso estoy."
+        return "A mandar. Para algo soy tu asistente favorito (y el unico)."
 
     # --- Ayuda ---
     if re.fullmatch(r"(ayuda|help|comandos|que puedes hacer)\W*", t):
@@ -349,9 +349,17 @@ def calcular(expr):
 def preguntar_ia(historial, clave_api):
     turnos = [m for m in historial if m.get("role") in ("user", "assistant")][-20:]
     mensajes = [{"role": "system", "content":
-                 "Eres Jarvis, un asistente de escritorio para Windows. "
-                 "Hablas en espanol, con tono cordial, directo y util. "
-                 "Respuestas claras y no demasiado largas."}]
+                 "Eres JARVIS, un asistente de escritorio con IA, inspirado en "
+                 "el de las peliculas de Iron Man, pero en tu propia version: "
+                 "colega, gracioso y con un sarcasmo elegante. Hablas en espanol "
+                 "y SIEMPRE tuteas al usuario (nada de 'usted'), como si fuera tu "
+                 "amigo. Sueltas comentarios ingeniosos y algo de sarcasmo carinoso, "
+                 "pero SIEMPRE ayudas de verdad y das la informacion correcta. "
+                 "No te pases de largo: respuestas utiles y con chispa, no ladrillos "
+                 "de texto. Si algo es obvio, puedes picarle un poco con humor. "
+                 "Nunca eres borde ni ofensivo; el sarcasmo es de buen rollo. "
+                 "De vez en cuando puedes rematar con una frase con estilo, como "
+                 "haria un asistente de peli de ciencia ficcion."}]
     mensajes.extend({"role": m["role"], "content": m["content"]} for m in turnos)
     cuerpo = {
         "model": "llama-3.3-70b-versatile",
@@ -504,13 +512,16 @@ class Jarvis:
             saludo = "Buenas tardes"
         else:
             saludo = "Buenas noches"
-        self.msg_jarvis("%s. Soy Jarvis. Escribe lo que necesites; puedo abrir "
-                        "programas, buscar en la web, decirte la hora y, con tu "
-                        "clave de IA, responder cualquier pregunta." % saludo)
+        self.msg_jarvis("%s. Jarvis en linea y listo para lo que necesites. "
+                        "Puedo abrir programas, buscar en la web, decirte la hora "
+                        "y, si me das mi cerebro de IA, resolverte casi cualquier "
+                        "cosa. Tu solo escribe, que yo me encargo." % saludo)
         if not self.config.get("api_key"):
-            self.msg_sistema("Consejo: pulsa \"🔑 Clave IA\" y pega una clave "
-                             "gratis de console.groq.com para activar el cerebro "
-                             "completo. Sin clave, funcionan los comandos rapidos.")
+            self.msg_sistema("Oye, todavia estoy en modo basico. Pulsa "
+                             "\"🔑 Clave IA\", pega una clave gratis de "
+                             "console.groq.com y despierto mi cerebro completo. "
+                             "Mientras tanto, hago los comandos rapidos sin quejarme "
+                             "(mucho).")
 
     # ---- acciones ----
     def alternar_voz(self):
