@@ -1,5 +1,10 @@
 # 🤖 JARVIS — tu asistente para Windows (sin micrófono)
 
+> Proyecto **independiente y desde cero**. Todo lo de Jarvis vive en esta
+> carpeta (`jarvis/`) y no depende de ningún otro archivo del repositorio.
+> Solo necesitas `jarvis.py` (y opcionalmente `jarvis.bat` para abrirlo con
+> doble clic).
+
 Un asistente de escritorio al que le **escribes** (no necesitas micro) y él te
 responde **por escrito y en voz alta**. La voz usa la que ya trae Windows, así
 que no tienes que instalar nada extra.

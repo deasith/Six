@@ -1,0 +1,6 @@
+# Configuracion local de Jarvis (incluye tu clave de IA). No se sube.
+jarvis_config.json
+
+# Cache de Python
+__pycache__/
+*.pyc
