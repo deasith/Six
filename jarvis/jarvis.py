@@ -394,8 +394,15 @@ class Jarvis:
         self.ventana = tk.Tk()
         self.ventana.title("JARVIS")
         self.ventana.configure(bg=FONDO)
-        self.ventana.geometry("760x620")
-        self.ventana.minsize(560, 460)
+        # Ajusta el tamano para que SIEMPRE quepa en la pantalla (dejando
+        # espacio para la barra de tareas de Windows), y centra la ventana.
+        ancho = 760
+        alto_pantalla = self.ventana.winfo_screenheight()
+        alto = min(620, alto_pantalla - 90)
+        pos_x = max(0, (self.ventana.winfo_screenwidth() - ancho) // 2)
+        pos_y = 10
+        self.ventana.geometry("%dx%d+%d+%d" % (ancho, alto, pos_x, pos_y))
+        self.ventana.minsize(520, 380)
         self._construir()
         self._saludo_inicial()
 
@@ -428,24 +435,11 @@ class Jarvis:
                   font=("Segoe UI", 9, "bold"), padx=10, pady=4,
                   cursor="hand2").pack(side="left", padx=4)
 
-        # Zona del chat
-        self.chat = scrolledtext.ScrolledText(
-            self.ventana, bg=FONDO_CHAT, fg=TEXTO, relief="flat",
-            font=("Segoe UI", 12), wrap="word", state="disabled",
-            padx=14, pady=12, insertbackground=TEXTO)
-        self.chat.pack(fill="both", expand=True, padx=16, pady=8)
-        self.chat.tag_config("jarvis", foreground=ACENTO,
-                             font=("Segoe UI", 12, "bold"))
-        self.chat.tag_config("jarvis_txt", foreground=TEXTO)
-        self.chat.tag_config("tu", foreground=USUARIO,
-                             font=("Segoe UI", 12, "bold"))
-        self.chat.tag_config("tu_txt", foreground=USUARIO)
-        self.chat.tag_config("sistema", foreground=TEXTO_TENUE,
-                             font=("Segoe UI", 10, "italic"))
-
-        # Barra de entrada
+        # IMPORTANTE: empaquetamos la barra de escribir ANTES que el chat y
+        # anclada abajo (side="bottom"). Asi Tkinter le reserva su sitio
+        # primero y nunca queda tapada, aunque la ventana sea pequena.
         barra = tk.Frame(self.ventana, bg=FONDO)
-        barra.pack(fill="x", padx=16, pady=(4, 16))
+        barra.pack(side="bottom", fill="x", padx=16, pady=(6, 14))
 
         self.entrada = tk.Entry(
             barra, bg=PANEL, fg=TEXTO, relief="flat", font=("Segoe UI", 13),
@@ -459,6 +453,21 @@ class Jarvis:
             bg=ACENTO, fg=FONDO, activebackground=ACENTO2, relief="flat",
             font=("Segoe UI", 11, "bold"), padx=18, pady=6, cursor="hand2")
         self.btn_enviar.pack(side="right")
+
+        # Zona del chat (rellena el espacio que queda arriba de la barra)
+        self.chat = scrolledtext.ScrolledText(
+            self.ventana, bg=FONDO_CHAT, fg=TEXTO, relief="flat",
+            font=("Segoe UI", 12), wrap="word", state="disabled",
+            padx=14, pady=12, insertbackground=TEXTO)
+        self.chat.pack(side="top", fill="both", expand=True, padx=16, pady=8)
+        self.chat.tag_config("jarvis", foreground=ACENTO,
+                             font=("Segoe UI", 12, "bold"))
+        self.chat.tag_config("jarvis_txt", foreground=TEXTO)
+        self.chat.tag_config("tu", foreground=USUARIO,
+                             font=("Segoe UI", 12, "bold"))
+        self.chat.tag_config("tu_txt", foreground=USUARIO)
+        self.chat.tag_config("sistema", foreground=TEXTO_TENUE,
+                             font=("Segoe UI", 10, "italic"))
 
     def _texto_voz(self):
         return "🔊 Voz: ON" if self.voz.activa else "🔇 Voz: OFF"
